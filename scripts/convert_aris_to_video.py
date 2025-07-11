@@ -1,8 +1,26 @@
+"""
+CLI script to convert ARIS files into mp4 video files.
+
+Arguments:
+ --filepath-aris: Path to the ARIS file (required).
+ --dir-save: Directory to save the generated video (required).
+ --start-frame: Frame number to start extraction (default: 0).
+ --end-frame: Frame number to stop extraction (optional).
+ --skip-frame: Number of frames to skip during extraction (default: 0).
+ --video-fps: Frames per second for the generated video (default: 24).
+ --video-codec: Codec for the video (default: "h264").
+ -log, --loglevel: Set the logging level (default: "warning").
+
+Example usage:
+python convert_aris_to_video.py --filepath-aris path/to/file.aris --dir-save path/to/save --start-frame 0 --end-frame 100 --video-fps 30
+"""
+
 import argparse
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Tuple
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -11,13 +29,24 @@ from numpy.typing import NDArray
 from aris.pyARIS import pyARIS
 
 
-# TODO: parallelize the frame extraction to use multiprocessing
+def extract_frame(aris_data, idx: int) -> NDArray[np.uint8]:
+    """
+    Extract a single frame as a numpy array from the `aris_data`.
+    """
+    try:
+        frame = pyARIS.FrameRead(aris_data, idx)
+        return frame.remap
+    except Exception as e:
+        logging.error(f"Could not extract frame {idx}, {e}")
+        return None  # Return None if there's an error
+
+
 def extract_frames(
     aris_data,
     start_frame: int,
     end_frame: int,
     skip_frame: int = 0,
-) -> list[NDArray[np.uint8]]:
+) -> List[NDArray[np.uint8]]:
     """
     Extract frames as numpy arrays from the `aris_data`.
 
@@ -25,13 +54,47 @@ def extract_frames(
         aris_frames (list[NDArray[np.uint8]])
     """
     aris_frames = []
-    for idx in range(start_frame, end_frame, skip_frame + 1):
-        try:
-            frame = pyARIS.FrameRead(aris_data, idx)
-            aris_frames.append(frame.remap)
-        except Exception as e:
-            logging.error(f"Could not extract frame {idx}, {e}")
+    indices = range(start_frame, end_frame, skip_frame + 1)
+
+    with ThreadPoolExecutor() as executor:
+        # Submit all frame extraction tasks
+        future_to_idx = {
+            executor.submit(extract_frame, aris_data, idx): idx for idx in indices
+        }
+
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                frame = future.result()
+                if frame is not None:
+                    aris_frames.append(frame)
+            except Exception as e:
+                logging.error(f"Error processing frame {idx}: {e}")
+
     return aris_frames
+
+
+# # TODO: parallelize the frame extraction to use multiprocessing
+# def extract_frames(
+#     aris_data,
+#     start_frame: int,
+#     end_frame: int,
+#     skip_frame: int = 0,
+# ) -> list[NDArray[np.uint8]]:
+#     """
+#     Extract frames as numpy arrays from the `aris_data`.
+#
+#     Returns:
+#         aris_frames (list[NDArray[np.uint8]])
+#     """
+#     aris_frames = []
+#     for idx in range(start_frame, end_frame, skip_frame + 1):
+#         try:
+#             frame = pyARIS.FrameRead(aris_data, idx)
+#             aris_frames.append(frame.remap)
+#         except Exception as e:
+#             logging.error(f"Could not extract frame {idx}, {e}")
+#     return aris_frames
 
 
 def grayscale_to_rgb(aris_frame: NDArray[np.uint8]) -> NDArray[np.uint8]:
@@ -81,6 +144,10 @@ def sanitize_frame_boundaries(
     end_frame: int | None,
     aris_data,
 ) -> Tuple[int, int]:
+    """
+    Sanitize the start_frame and end_frame values to not get out of bound
+    errors when generating the videos and extracting the frames.
+    """
     if start_frame is None:
         start_frame = 0
     if end_frame is None:
@@ -128,7 +195,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--video-fps",
         type=int,
         help="Frames per second in the generated video",
-        default=24,
+        default=10,
     )
     parser.add_argument(
         "--video-codec",
@@ -207,10 +274,14 @@ if __name__ == "__main__":
         dir_save.mkdir(parents=True, exist_ok=True)
         logger.info(f"Parsing ARIS file {filepath_aris}")
         aris_data, _ = pyARIS.DataImport(str(filepath_aris))
+        aris_data.info()
         start_frame_sanitized, end_frame_sanitized = sanitize_frame_boundaries(
             start_frame,
             end_frame,
             aris_data,
+        )
+        logger.info(
+            f"Parsing frames from frame {start_frame_sanitized} until frame {end_frame_sanitized}"
         )
         frames = extract_frames(
             aris_data=aris_data,
@@ -218,7 +289,10 @@ if __name__ == "__main__":
             end_frame=end_frame_sanitized,
             skip_frame=skip_frame,
         )
-        filepath_save = dir_save / f"{filepath_aris.stem}.mp4"
+        filepath_save = (
+            dir_save
+            / f"{filepath_aris.stem}_from_{start_frame_sanitized}_to_{end_frame_sanitized}.mp4"
+        )
         aris_frames_to_mp4v_video(
             aris_frames=frames,
             filepath_save=filepath_save,
