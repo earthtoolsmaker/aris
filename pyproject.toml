@@ -1,0 +1,28 @@
+[project]
+name = "aris"
+version = "0.1.0"
+description = "Process ARIS files with Python"
+readme = "README.md"
+authors = [
+    { name = "ETM", email = "earthtoolsmaker@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ffmpeg-python>=0.2.0",
+    "matplotlib>=3.10.3",
+    "numpy>=2.3.1",
+    "opencv-python>=4.11.0.86",
+    "pillow>=11.3.0",
+    "pytz>=2025.2",
+    "tqdm>=4.67.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "ipython>=9.4.0",
+]
