@@ -2,14 +2,42 @@
 
 Process ARIS files with Python.
 
-__Warning__:
+## Setup
 
-Only work on Linux and MacOS.
+### Binaries dependencies
 
-## Commands
+- [ffmpeg](https://www.ffmpeg.org/): A complete, cross-platform solution to
+record, convert and stream audio and video.
 
-Convert an mp4 video into a h264 codec:
+### 🐍 Python dependencies
+
+Install `uv` with `pipx`:
+
+```sh
+pipx install uv
+```
+
+Create a virtualenv and install the dependencies with `uv`:
+
+```sh
+uv sync
+```
+
+Activate the `uv` virutalenv:
+
+```sh
+source .venv/bin/activate
+```
+
+## Scripts
+
+Convert an ARIS file into an MP4 video:
 
 ```bash
-ffmpeg -i 2025-05-17_010000_inverted.mp4 -c:v libx264 -preset medium -crf 23 output.mp4
+uv run python ./scripts/convert_aris_to_video.py \
+--filepath-aris your_aris_file.aris \
+--dir-save export/ \
+--video-codec h264 \
+--video-fps 10 \
+--loglevel info
 ```
