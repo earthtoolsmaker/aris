@@ -117,4 +117,3 @@ def extract_frames_as_numpy_arrays(
                 logging.error(f"Error processing frame {idx}: {e}")
 
     return aris_frames
-

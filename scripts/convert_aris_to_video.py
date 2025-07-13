@@ -102,6 +102,29 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
+def get_filepath_video_save(
+    args_cli: dict,
+    aris_data: pyARIS.ARIS_File,
+    dir_save: Path,
+) -> Path:
+    """
+    Construct a filepath to save the converted video.
+    """
+    start_frame_sanitized, end_frame_sanitized = sanitize_frame_boundaries(
+        args_cli["start_frame"],
+        args_cli["end_frame"],
+        aris_data,
+    )
+    number_frames = aris_data.FrameCount
+    if start_frame_sanitized == 0 and end_frame == number_frames - 1:
+        return dir_save / f"{filepath_aris.stem}.mp4"
+    else:
+        return (
+            dir_save
+            / f"{filepath_aris.stem}_fromframe_{start_frame_sanitized}_toframe_{end_frame_sanitized}.mp4"
+        )
+
+
 if __name__ == "__main__":
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
@@ -144,19 +167,26 @@ if __name__ == "__main__":
             end_frame=end_frame_sanitized,
             skip_frame=skip_frame,
         )
-        filepath_save = (
-            dir_save
-            / f"{filepath_aris.stem}_from_{start_frame_sanitized}_to_{end_frame_sanitized}.mp4"
+        filepath_video_save = get_filepath_video_save(
+            args_cli=args,
+            aris_data=aris_data,
+            dir_save=dir_save,
+        )
+        logger.info(
+            f"Generating a video file from the ARIS file in {filepath_video_save}"
         )
         aris_frame.aris_frames_to_mp4v_video(
             aris_frames=aris_frames,
-            filepath_save=filepath_save,
+            filepath_save=filepath_video_save,
             fps=int(frame_rate_aris),
         )
-        logger.info("Encode video with H.264 codec")
+        filepath_h264_video_save = (
+            filepath_video_save.parent / f"encoded_h264_{filepath_video_save.name}"
+        )
+        logger.info("Encode video with H.264 codec in {filepath_h264_video_save}")
         video_utils.encode_video_with_h264_codec(
-            filepath_input=filepath_save,
-            filepath_output=filepath_save.parent / f"encoded_h264_{filepath_save.name}",
+            filepath_input=filepath_video_save,
+            filepath_output=filepath_h264_video_save,
         )
         logger.info("Done ✅")
 
