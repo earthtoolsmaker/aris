@@ -1,16 +1,23 @@
 """
-CLI script to convert ARIS files into mp4 video files.
+CLI script to convert ARIS files into MP4 video files.
 
-Arguments:
- --filepath-aris: Path to the ARIS file (required).
- --dir-save: Directory to save the generated video (required).
- --start-frame: Frame number to start extraction (default: 0).
- --end-frame: Frame number to stop extraction (optional).
- --video-codec: Codec for the video (default: "h264").
- -log, --loglevel: Set the logging level (default: "warning").
+This script provides a command-line interface for converting ARIS files, which
+contain sonar data, into MP4 video files. Users can specify various parameters,
+including the path to the ARIS file, the directory for saving the generated
+video, and frame extraction boundaries.
 
-Example usage:
-python convert_aris_to_video.py --filepath-aris data/aris/file.aris --dir-save data/mp4/ --start-frame 0 --end-frame 100
+Arguments: --filepath-aris: Path to the ARIS file (required). --dir-aris:
+Directory containing ARIS files to convert (optional). --dir-save: Directory to
+save the generated video (required). --start-frame: Frame number to start
+extraction (default: 0). --end-frame: Frame number to stop extraction
+(optional). --video-codec: Codec for the video (default: "h264"). -log,
+--loglevel: Set the logging level (default: "warning").
+
+Example usage: python convert_aris_to_video.py --filepath-aris
+data/aris/file.aris --dir-save data/mp4/ --start-frame 0 --end-frame 100
+
+This script facilitates the extraction of frames from ARIS data and encodes
+them into a video format, helping users visualize sonar data effectively.
 """
 
 import argparse
@@ -129,6 +136,7 @@ def sanitize_frame_boundaries(
 
 def get_filepath_video_save(
     args_cli: dict,
+    filepath_aris: Path,
     aris_data: pyARIS.ARIS_File,
     dir_save: Path,
 ) -> Path:
@@ -187,13 +195,22 @@ def process_aris_filepath(
     aris_data.info()
     filepath_video_save = get_filepath_video_save(
         args_cli=args,
+        filepath_aris=filepath_aris,
         aris_data=aris_data,
         dir_save=dir_save,
     )
+    logger.info(f"filepath_video_save: {filepath_video_save}")
     filepath_h264_video_save = (
         filepath_video_save.parent / f"encoded_h264_{filepath_video_save.name}"
     )
-    if not force and filepath_video_save.exists() and filepath_h264_video_save.exists():
+    logger.info(f"filepath_h264_video_save: {filepath_h264_video_save}")
+    if (
+        not force
+        and filepath_h264_video_save
+        and filepath_video_save.exists()
+        and filepath_h264_video_save
+        and filepath_h264_video_save.exists()
+    ):
         logger.info(
             f"Skipping because the video is already generated in {filepath_video_save}"
         )
@@ -218,11 +235,6 @@ def process_aris_filepath(
             end_frame=end_frame_sanitized,
             skip_frame=0,
         )
-        filepath_video_save = get_filepath_video_save(
-            args_cli=args,
-            aris_data=aris_data,
-            dir_save=dir_save,
-        )
         logger.info(
             f"Generating a video file from the ARIS file in {filepath_video_save}"
         )
@@ -230,9 +242,6 @@ def process_aris_filepath(
             aris_frames=aris_frames,
             filepath_save=filepath_video_save,
             fps=int(frame_rate_aris),
-        )
-        filepath_h264_video_save = (
-            filepath_video_save.parent / f"encoded_h264_{filepath_video_save.name}"
         )
         logger.info(f"Encode video with H.264 codec in {filepath_h264_video_save}")
         video_utils.encode_video_with_h264_codec(
