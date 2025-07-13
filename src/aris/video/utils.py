@@ -1,6 +1,7 @@
 import logging
-import subprocess
 from pathlib import Path
+
+import ffmpeg
 
 def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
     """
@@ -9,28 +10,17 @@ def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
 
     assert filepath_input.exists(), "filepath_input does not exist!"
 
-    command = [
-        "ffmpeg",
-        "-i",
-        str(filepath_input),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        str(filepath_output),
-    ]
-
-    logging.info(f"Command to run: {command}")
+    logging.info(f"Encoding video from {filepath_input} to {filepath_output}")
 
     try:
-        subprocess.run(
-            command,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        (
+            ffmpeg
+            .input(str(filepath_input))
+            .output(str(filepath_output), vcodec='libx264', preset='medium')
+            .run(capture_stdout=True, capture_stderr=True)
         )
-        logging.info("Command executed successfully.")
+        logging.info("Video encoded successfully.")
 
-    except subprocess.CalledProcessError as e:
-        logging.error("An error occurred while executing the command.")
+    except ffmpeg.Error as e:
+        logging.error("An error occurred while encoding the video.")
         logging.error("Error message:", e.stderr.decode())
