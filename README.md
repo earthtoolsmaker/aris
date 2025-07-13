@@ -46,3 +46,11 @@ uv run python ./scripts/convert_aris_to_video.py \
   --filepath-aris ./data/aris/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_000000.aris \
   --dir-save ./data/mp4/jansen-lake-2025/ARIS_2025_05_06
 ```
+
+Extract the average frame from a video:
+
+```bash
+uv run python ./scripts/extract_average_video_frame.py \
+--filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.mp4 \
+--filepath-save ./data/jpg_average_frame/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.jpg
+```

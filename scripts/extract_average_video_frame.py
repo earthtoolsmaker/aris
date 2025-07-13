@@ -84,6 +84,7 @@ if __name__ == "__main__":
         )
         if frame_average is not None:
             logger.info(f"Saving average frame in {filepath_save}")
+            filepath_save.parent.mkdir(parents=True, exist_ok=True)
             cv2.imwrite(filepath_save, frame_average)
             exit(0)
         else:
