@@ -31,13 +31,20 @@ source .venv/bin/activate
 
 ## Scripts
 
-Convert an ARIS file into an MP4 video:
+Convert all ARIS files from a directory into MP4 videos:
 
 ```bash
 uv run python ./scripts/convert_aris_to_video.py \
---filepath-aris your_aris_file.aris \
---dir-save export/ \
---video-codec h264 \
---video-fps 10 \
---loglevel info
+  --dir-aris ./data/aris/jansen-lake-2025/ARIS_2025_05_06 \
+  --dir-save ./data/mp4/jansen-lake-2025/ARIS_2025_05_06 \
+  --loglevel info
+```
+
+Convert one ARIS file into MP4 videos:
+
+```bash
+uv run python ./scripts/convert_aris_to_video.py \
+  --filepath-aris ./data/aris/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_000000.aris \
+  --dir-save ./data/mp4/jansen-lake-2025/ARIS_2025_05_06 \
+  --loglevel info
 ```
