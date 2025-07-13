@@ -16,11 +16,10 @@ python convert_aris_to_video.py --filepath-aris path/to/file.aris --dir-save pat
 
 import argparse
 import logging
-import subprocess
 from pathlib import Path
 from typing import Tuple
 
-import aris.pyARIS.frame as frame_utils
+import aris.frame as aris_frame
 import aris.video.utils as video_utils
 from aris.pyARIS import pyARIS
 
@@ -139,7 +138,7 @@ if __name__ == "__main__":
         logger.info(
             f"Parsing frames from frame {start_frame_sanitized} until frame {end_frame_sanitized}"
         )
-        aris_frames = frame_utils.extract_frames_as_numpy_arrays(
+        aris_frames = aris_frame.extract_frames_as_numpy_arrays(
             aris_data=aris_data,
             start_frame=start_frame_sanitized,
             end_frame=end_frame_sanitized,
@@ -149,7 +148,7 @@ if __name__ == "__main__":
             dir_save
             / f"{filepath_aris.stem}_from_{start_frame_sanitized}_to_{end_frame_sanitized}.mp4"
         )
-        frame_utils.aris_frames_to_mp4v_video(
+        aris_frame.aris_frames_to_mp4v_video(
             aris_frames=aris_frames,
             filepath_save=filepath_save,
             fps=int(frame_rate_aris),

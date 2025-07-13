@@ -9,7 +9,7 @@ import pytz
 from numpy.typing import NDArray
 from tqdm import tqdm
 
-from . import pyARIS
+from .pyARIS import pyARIS
 
 
 def get_recorded_at_datetime(aris_frame: pyARIS.ARIS_Frame) -> datetime.datetime:
@@ -117,3 +117,4 @@ def extract_frames_as_numpy_arrays(
                 logging.error(f"Error processing frame {idx}: {e}")
 
     return aris_frames
+
