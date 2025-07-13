@@ -1,6 +1,6 @@
 # python aris
 
-Process ARIS files with Python.
+Process ARIS sonar files with Python.
 
 ## Setup
 
