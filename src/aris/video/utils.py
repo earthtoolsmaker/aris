@@ -20,7 +20,15 @@ from tqdm import tqdm
 
 def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
     """
-    Encode the video with h264 codec.
+    Encode the input video file to the output file using the H.264 codec.
+
+    Args:
+        filepath_input (Path): The path to the input video file to be encoded.
+        filepath_output (Path): The path where the encoded video file will be saved.
+
+    Raises:
+        AssertionError: If the input file does not exist.
+        ffmpeg.Error: If an error occurs during the encoding process.
     """
 
     assert filepath_input.exists(), "filepath_input does not exist!"
@@ -86,22 +94,20 @@ def get_average_frame(
         return None
 
 
-
-def get_all_frames(
-    filepath_video: Path,
-) -> list[NDArray[np.uint8]]:
+def get_all_frames(filepath_video: Path) -> list[NDArray[np.uint8]]:
     """
-    Extract all frames from `filepath_video`.
+    Extract all frames from the specified video file.
+
+    Args:
+        filepath_video (Path): The path to the video file from which frames will be extracted.
 
     Returns:
-        list of array_images.
+        list[NDArray[np.uint8]]: A list of frames represented as NumPy arrays, where each array corresponds to a frame in the video.
     """
     logging.info(f"Opening Video {filepath_video}")
     cap = cv2.VideoCapture(str(filepath_video))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    logging.info(
-        f"Extracting all frames from {filepath_video}"
-    )
+    logging.info(f"Extracting all frames from {filepath_video}")
 
     frames = []
 
@@ -138,7 +144,9 @@ def get_fps(filepath_video: Path):
     return fps
 
 
-def save_frames_to_video(frames: list[NDArray[np.uint8]], filepath_save: Path, fps: int = 30) -> None:
+def save_frames_to_video(
+    frames: list[NDArray[np.uint8]], filepath_save: Path, fps: int = 30
+) -> None:
     """
     Save a list of frames as a video file using the specified frames per second (FPS).
 
@@ -159,7 +167,7 @@ def save_frames_to_video(frames: list[NDArray[np.uint8]], filepath_save: Path, f
         return
 
     height, width, _ = frames[0].shape
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     video_writer = cv2.VideoWriter(str(filepath_save), fourcc, fps, (width, height))
 
     with tqdm(total=len(frames), desc="Saving frames", unit="frame") as pbar:
