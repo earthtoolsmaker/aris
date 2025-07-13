@@ -1,4 +1,4 @@
-# python aris
+# python sonar aris
 
 Process ARIS sonar files with Python.
 
