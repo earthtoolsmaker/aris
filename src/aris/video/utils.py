@@ -15,6 +15,7 @@ import cv2
 import ffmpeg
 import numpy as np
 from numpy.typing import NDArray
+from tqdm import tqdm
 
 
 def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
@@ -41,7 +42,7 @@ def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
 
 def get_average_frame(
     filepath_video: Path,
-    max_frames: int | None,
+    max_frames: int | None = None,
 ) -> NDArray[np.uint8] | None:
     """
     Extract average frame from `filepath_video` using `max_frames` if
@@ -83,3 +84,88 @@ def get_average_frame(
     else:
         logging.warning(f"Could not generate average frame from {filepath_video}")
         return None
+
+
+
+def get_all_frames(
+    filepath_video: Path,
+) -> list[NDArray[np.uint8]]:
+    """
+    Extract all frames from `filepath_video`.
+
+    Returns:
+        list of array_images.
+    """
+    logging.info(f"Opening Video {filepath_video}")
+    cap = cv2.VideoCapture(str(filepath_video))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    logging.info(
+        f"Extracting all frames from {filepath_video}"
+    )
+
+    frames = []
+
+    with tqdm(total=total_frames, desc="Extracting frames", unit="frame") as pbar:
+        while cap.isOpened():
+            _, frame = cap.read()
+            if frame is None:
+                break
+            frames.append(frame.astype("uint8"))
+            pbar.update(1)
+
+    cap.release()
+    return frames
+
+
+def get_fps(filepath_video: Path):
+    """
+    Retrieve the frames per second (FPS) of the specified video file.
+
+    Args:
+        filepath_video (Path): The path to the video file.
+
+    Returns:
+        float: The FPS of the video.
+
+    Raises:
+        Exception: If the video file cannot be opened.
+    """
+    cap = cv2.VideoCapture(str(filepath_video))
+    if not cap.isOpened():
+        raise Exception(f"Cannot open {filepath_video}")
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    cap.release()
+    return fps
+
+
+def save_frames_to_video(frames: list[NDArray[np.uint8]], filepath_save: Path, fps: int = 30) -> None:
+    """
+    Save a list of frames as a video file using the specified frames per second (FPS).
+
+    Args:
+        frames (list[NDArray[np.uint8]]): A list of frames to be saved, where each frame is represented as a NumPy array.
+        filepath_save (Path): The path where the video file will be saved.
+        fps (int, optional): The frames per second for the output video. Default is 30.
+
+    Raises:
+        ValueError: If the list of frames is empty.
+        Exception: If there is an error during video writing.
+
+    Returns:
+        None
+    """
+    if not frames:
+        logging.error("No frames to save.")
+        return
+
+    height, width, _ = frames[0].shape
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(str(filepath_save), fourcc, fps, (width, height))
+
+    with tqdm(total=len(frames), desc="Saving frames", unit="frame") as pbar:
+        for frame in frames:
+            video_writer.write(frame)
+            pbar.update(1)
+
+    video_writer.release()
+    logging.info(f"Video saved to {filepath_save}")
