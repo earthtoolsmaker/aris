@@ -3,6 +3,7 @@ from pathlib import Path
 
 import ffmpeg
 
+
 def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
     """
     Encode the video with h264 codec.
@@ -14,9 +15,8 @@ def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
 
     try:
         (
-            ffmpeg
-            .input(str(filepath_input))
-            .output(str(filepath_output), vcodec='libx264', preset='medium')
+            ffmpeg.input(str(filepath_input))
+            .output(str(filepath_output), vcodec="libx264", preset="medium")
             .run(capture_stdout=True, capture_stderr=True)
         )
         logging.info("Video encoded successfully.")
