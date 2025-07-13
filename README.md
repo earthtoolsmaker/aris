@@ -40,7 +40,7 @@ uv run python ./scripts/convert_aris_to_video.py \
   --loglevel info
 ```
 
-Convert one ARIS file into MP4 videos:
+Convert one ARIS file into an MP4 video:
 
 ```bash
 uv run python ./scripts/convert_aris_to_video.py \
