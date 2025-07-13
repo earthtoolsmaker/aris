@@ -8,8 +8,8 @@ video, and frame extraction boundaries.
 
 Arguments:
 
---filepath-aris: Path to the ARIS file (required).
---dir-aris: Directory containing ARIS files to convert (optional).
+--filepath-aris: Path to the ARIS file (either --filepath-aris or --dir-aris required).
+--dir-aris: Directory containing ARIS files to convert (either --filepath-aris or --dir-aris required).
 --dir-save: Directory to save the generated video (required).
 --start-frame: Frame number to start extraction (default: 0).
 --end-frame: Frame number to stop extraction (optional).
@@ -18,6 +18,7 @@ Arguments:
 
 Example usage:
 
+python convert_aris_to_video.py --filepath-aris data/aris/file.aris --dir-save data/mp4/
 python convert_aris_to_video.py --filepath-aris data/aris/file.aris --dir-save data/mp4/ --start-frame 0 --end-frame 100
 
 This script facilitates the extraction of frames from ARIS data and encodes
@@ -26,6 +27,7 @@ them into a video format, helping users visualize sonar data effectively.
 
 import argparse
 import logging
+import random
 from logging import Logger
 from pathlib import Path
 from typing import Tuple
@@ -164,7 +166,7 @@ def get_filepath_video_save(
         aris_data,
     )
     number_frames = aris_data.FrameCount
-    if start_frame_sanitized == 0 and end_frame == number_frames - 1:
+    if start_frame_sanitized == 0 and end_frame_sanitized == (number_frames - 1):
         return dir_save / f"{filepath_aris.stem}.mp4"
     else:
         return (
@@ -267,8 +269,16 @@ if __name__ == "__main__":
         logger.info(args)
         filepath_aris = args["filepath_aris"]
         dir_aris = args["dir_aris"]
-        filepaths_aris_to_process = filepath_aris or list(dir_aris.rglob("*.aris"))
-        logger.info(f"Found {len(filepaths_aris_to_process)} ARIS files to process")
+        filepaths_aris_to_process = (
+            [filepath_aris] if filepath_aris else list(dir_aris.rglob("*.aris"))
+        )
+        filepaths_aris_to_process_shuffled = random.Random().sample(
+            filepaths_aris_to_process,
+            k=len(filepaths_aris_to_process),
+        )
+        logger.info(
+            f"Found {len(filepaths_aris_to_process_shuffled)} ARIS files to process"
+        )
         dir_save = args["dir_save"]
         start_frame = args["start_frame"]
         end_frame = args["end_frame"]
@@ -276,7 +286,7 @@ if __name__ == "__main__":
         logger.info(f"Saving results in {dir_save}")
         dir_save.mkdir(parents=True, exist_ok=True)
 
-        for fp_aris in filepaths_aris_to_process:
+        for fp_aris in filepaths_aris_to_process_shuffled:
             try:
                 process_aris_filepath(
                     start_frame=start_frame,
