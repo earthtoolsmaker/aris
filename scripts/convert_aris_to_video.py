@@ -6,15 +6,19 @@ contain sonar data, into MP4 video files. Users can specify various parameters,
 including the path to the ARIS file, the directory for saving the generated
 video, and frame extraction boundaries.
 
-Arguments: --filepath-aris: Path to the ARIS file (required). --dir-aris:
-Directory containing ARIS files to convert (optional). --dir-save: Directory to
-save the generated video (required). --start-frame: Frame number to start
-extraction (default: 0). --end-frame: Frame number to stop extraction
-(optional). --video-codec: Codec for the video (default: "h264"). -log,
---loglevel: Set the logging level (default: "warning").
+Arguments:
 
-Example usage: python convert_aris_to_video.py --filepath-aris
-data/aris/file.aris --dir-save data/mp4/ --start-frame 0 --end-frame 100
+--filepath-aris: Path to the ARIS file (required).
+--dir-aris: Directory containing ARIS files to convert (optional).
+--dir-save: Directory to save the generated video (required).
+--start-frame: Frame number to start extraction (default: 0).
+--end-frame: Frame number to stop extraction (optional).
+--video-codec: Codec for the video (default: "h264").
+-log, --loglevel: Set the logging level (default: "warning").
+
+Example usage:
+
+python convert_aris_to_video.py --filepath-aris data/aris/file.aris --dir-save data/mp4/ --start-frame 0 --end-frame 100
 
 This script facilitates the extraction of frames from ARIS data and encodes
 them into a video format, helping users visualize sonar data effectively.
