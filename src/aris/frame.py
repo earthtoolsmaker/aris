@@ -51,11 +51,10 @@ def aris_frames_to_mp4v_video(
 ) -> None:
     height = aris_frames[0].shape[0]
     width = aris_frames[0].shape[1]
-    cv2.VideoWriter()
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     filepath_save.parent.mkdir(parents=True, exist_ok=True)
     video = cv2.VideoWriter(str(filepath_save), fourcc, fps, (width, height))
-    for i in range(len(aris_frames)):
+    for i in tqdm(range(len(aris_frames)), desc="Writing frames"):
         frame = aris_frames[i]
         if is_grayscale(frame):
             rgb_frame = grayscale_to_rgb(frame)
