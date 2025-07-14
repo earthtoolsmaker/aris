@@ -113,36 +113,50 @@ def process_video(
     dir_save: Path,
     logger: Logger,
 ) -> None:
+    """
+    Process the video by chunking it into smaller segments.
+
+    Args:
+        filepath_video (Path): Path to the source video file.
+        duration_seconds (int): Duration in seconds for each video chunk.
+        dir_save (Path): Directory where the chunked videos will be saved.
+        logger (Logger): Logger instance for logging information and errors.
+    """
     video_duration = video_utils.get_video_duration(filepath_video)
-    minutes = int(video_duration // 60)
-    seconds = int(video_duration % 60)
-    logger.info(
-        f"Extracted video duration: {minutes}mn{seconds}s from {filepath_video}"
-    )
-    start_time_seconds_list = [
-        i * duration_seconds
-        for i in range(0, math.ceil(video_duration / duration_seconds))
-    ]
-    logger.info(
-        f"Chunking the video in {len(start_time_seconds_list)} clips of {duration_seconds}s long"
-    )
-    for start_time_seconds in tqdm(start_time_seconds_list):
-        filepath_save = (
-            dir_save
-            / filepath_video.stem
-            / f"{filepath_video.stem}_start_{int(start_time_seconds)}_duration_{int(duration_seconds)}.mp4"
+    if not video_duration:
+        logger.error(
+            f"Can not get the video duration for {filepath_video}, skip processing."
         )
-        logger.info(f"Saving chunk in {filepath_save}")
-        filepath_save.parent.mkdir(exist_ok=True, parents=True)
+    else:
+        minutes = int(video_duration // 60)
+        seconds = int(video_duration % 60)
         logger.info(
-            f"Chunking video {filepath_video} starting at {start_time_seconds}s for a duration of {duration_seconds}s"
+            f"Extracted video duration: {minutes}mn{seconds}s from {filepath_video}"
         )
-        chunk_video(
-            filepath_video=filepath_video,
-            start_time_seconds=int(start_time_seconds),
-            duration_seconds=duration_seconds,
-            filepath_save=filepath_save,
+        start_time_seconds_list = [
+            i * duration_seconds
+            for i in range(0, math.ceil(video_duration / duration_seconds))
+        ]
+        logger.info(
+            f"Chunking the video in {len(start_time_seconds_list)} clips of {duration_seconds}s long"
         )
+        for start_time_seconds in tqdm(start_time_seconds_list):
+            filepath_save = (
+                dir_save
+                / filepath_video.stem
+                / f"{filepath_video.stem}_start_{int(start_time_seconds)}_duration_{int(duration_seconds)}.mp4"
+            )
+            logger.info(f"Saving chunk in {filepath_save}")
+            filepath_save.parent.mkdir(exist_ok=True, parents=True)
+            logger.info(
+                f"Chunking video {filepath_video} starting at {start_time_seconds}s for a duration of {duration_seconds}s"
+            )
+            chunk_video(
+                filepath_video=filepath_video,
+                start_time_seconds=int(start_time_seconds),
+                duration_seconds=duration_seconds,
+                filepath_save=filepath_save,
+            )
 
 
 if __name__ == "__main__":
