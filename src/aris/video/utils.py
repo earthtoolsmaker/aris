@@ -53,11 +53,22 @@ def get_average_frame(
     max_frames: int | None = None,
 ) -> NDArray[np.uint8] | None:
     """
-    Extract average frame from `filepath_video` using `max_frames` if
-    specified, otherwise use all frames.
+    Extract the average frame from the specified video file.
+
+    This function opens the video file and computes the average of the frames
+    up to a specified maximum number of frames. If no maximum is specified,
+    all frames will be used to compute the average.
+
+    Args:
+        filepath_video (Path): The path to the video file from which the average frame will be extracted.
+        max_frames (int | None, optional): The maximum number of frames to consider for averaging.
+                                            If None, all frames are used.
 
     Returns:
-        array_image or None
+        NDArray[np.uint8] | None: The average frame as a NumPy array, or None if no frames could be processed.
+
+    Raises:
+        Exception: If the video file cannot be opened or read.
     """
     logging.info(f"Opening Video {filepath_video}")
     cap = cv2.VideoCapture(str(filepath_video))
@@ -142,6 +153,28 @@ def get_fps(filepath_video: Path):
     fps = cap.get(cv2.CAP_PROP_FPS)
     cap.release()
     return fps
+
+
+def get_video_duration(filepath_video: Path) -> float | None:
+    """
+    Get the duration of the video in seconds.
+
+    Args:
+        filepath_video (Path): The path to the video file for which the duration is to be retrieved.
+
+    Returns:
+        float: The duration of the video in seconds.
+
+    Raises:
+        Exception: If the video file cannot be opened or if the duration cannot be retrieved.
+    """
+    try:
+        probe = ffmpeg.probe(str(filepath_video))
+        duration = float(probe["format"]["duration"])
+        return duration
+    except Exception as e:
+        logging.error(f"Could not get video duration for {filepath_video}")
+        return None
 
 
 def save_frames_to_video(

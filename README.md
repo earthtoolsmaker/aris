@@ -63,3 +63,21 @@ uv run python ./scripts/encode_video_with_codec.py \
   --dir-save ./export/mp4_h264 \
   --video-codec "h264"
 ```
+
+Chunk a large video file into non overlapping segments:
+
+```bash
+uv run python ./scripts/chunk_video.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_000000.mp4 \
+  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
+  --duration-seconds 120
+```
+
+Chunk a directory of video files into non overlapping segments:
+
+```bash
+uv run python ./scripts/chunk_video.py \
+  --dir-videos ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/ \
+  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
+  --duration-seconds 120
+```
