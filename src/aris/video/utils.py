@@ -155,7 +155,7 @@ def get_fps(filepath_video: Path):
     return fps
 
 
-def get_video_duration(filepath_video: Path) -> float:
+def get_video_duration(filepath_video: Path) -> float | None:
     """
     Get the duration of the video in seconds.
 
@@ -168,9 +168,13 @@ def get_video_duration(filepath_video: Path) -> float:
     Raises:
         Exception: If the video file cannot be opened or if the duration cannot be retrieved.
     """
-    probe = ffmpeg.probe(str(filepath_video))
-    duration = float(probe["format"]["duration"])
-    return duration
+    try:
+        probe = ffmpeg.probe(str(filepath_video))
+        duration = float(probe["format"]["duration"])
+        return duration
+    except Exception as e:
+        logging.error(f"Could not get video duration for {filepath_video}")
+        return None
 
 
 def save_frames_to_video(

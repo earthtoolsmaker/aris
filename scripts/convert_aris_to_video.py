@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import Tuple
 
 import aris.frame as aris_frame
-import aris.video.utils as video_utils
 from aris.pyARIS import pyARIS
 
 
