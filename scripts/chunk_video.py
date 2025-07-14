@@ -5,7 +5,8 @@ Usage:
     python chunk_video.py --filepath-video <path_to_video> --dir-save <path_to_save_chunked_videos> [-log <log_level>]
 
 Arguments:
-    --filepath-video     Path to the source video (required).
+    --filepath-video     Path to the source video (optional).
+    --dir-videos         Directory containing video files to chunk (optional).
     --dir-save           Path to the chunked videos (required).
     --duration-seconds   Duration in seconds of the video chunks (required).
     -log, --loglevel     Provide logging level (default is 'info', options include 'debug', 'info', 'warning', etc.).
