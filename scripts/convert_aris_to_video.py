@@ -176,7 +176,7 @@ def process_aris_filepath(
     force: bool = False,
 ) -> None:
     """
-    Process a single ARIS file by extracting frames, generating a video, and encoding it with H.264 codec.
+    Process a single ARIS file by extracting frames, generating a video.
     The processed video is saved in the specified directory.
 
     Parameters:
