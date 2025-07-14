@@ -75,7 +75,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--video-codec",
         choices=["h264"],
         type=str,
-        help="Frames per second in the generated video",
+        help="Codec to encode the video with",
         default="h264",
     )
     parser.add_argument(
