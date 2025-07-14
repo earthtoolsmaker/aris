@@ -54,3 +54,12 @@ uv run python ./scripts/extract_average_video_frame.py \
 --filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.mp4 \
 --filepath-save ./data/jpg_average_frame/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.jpg
 ```
+
+Encode all mp4 video files with a new codec:
+
+```bash
+uv run python ./scripts/encode_video_with_codec.py \
+  --dir-videos ./data/mp4/ \
+  --dir-save ./export/mp4_h264 \
+  --video-codec "h264"
+```
