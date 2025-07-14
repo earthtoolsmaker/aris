@@ -13,7 +13,6 @@ Arguments:
 --dir-save: Directory to save the generated video (required).
 --start-frame: Frame number to start extraction (default: 0).
 --end-frame: Frame number to stop extraction (optional).
---video-codec: Codec for the video (default: "h264").
 -log, --loglevel: Set the logging level (default: "warning").
 
 Example usage:
@@ -70,13 +69,6 @@ def make_cli_parser() -> argparse.ArgumentParser:
         nargs="?",
         const=None,
         help="frame end",
-    )
-    parser.add_argument(
-        "--video-codec",
-        choices=["h264"],
-        type=str,
-        help="Codec to encode the video with",
-        default="h264",
     )
     parser.add_argument(
         "-log",
@@ -206,17 +198,7 @@ def process_aris_filepath(
         dir_save=dir_save,
     )
     logger.info(f"filepath_video_save: {filepath_video_save}")
-    filepath_h264_video_save = (
-        filepath_video_save.parent / f"encoded_h264_{filepath_video_save.name}"
-    )
-    logger.info(f"filepath_h264_video_save: {filepath_h264_video_save}")
-    if (
-        not force
-        and filepath_h264_video_save
-        and filepath_video_save.exists()
-        and filepath_h264_video_save
-        and filepath_h264_video_save.exists()
-    ):
+    if not force and filepath_video_save and filepath_video_save.exists():
         logger.info(
             f"Skipping because the video is already generated in {filepath_video_save}"
         )
@@ -249,11 +231,6 @@ def process_aris_filepath(
             filepath_save=filepath_video_save,
             fps=int(frame_rate_aris),
         )
-        logger.info(f"Encode video with H.264 codec in {filepath_h264_video_save}")
-        video_utils.encode_video_with_h264_codec(
-            filepath_input=filepath_video_save,
-            filepath_output=filepath_h264_video_save,
-        )
         logger.info(f"Done with ARIS filepath {filepath_aris}")
 
 
@@ -282,7 +259,6 @@ if __name__ == "__main__":
         dir_save = args["dir_save"]
         start_frame = args["start_frame"]
         end_frame = args["end_frame"]
-        video_codec = args["video_codec"]
         logger.info(f"Saving results in {dir_save}")
         dir_save.mkdir(parents=True, exist_ok=True)
 
