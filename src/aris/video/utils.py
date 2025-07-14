@@ -1,13 +1,3 @@
-"""
-This module provides functions for video processing tasks, including encoding videos
-with the H.264 codec and extracting the average frame from a video file.
-
-Functions:
-- encode_video_with_h264_codec: Encodes a given video file using the H.264 codec.
-- get_average_frame: Extracts the average frame from a video file, utilizing a specified
-  number of frames or all frames if none are specified.
-"""
-
 import logging
 from pathlib import Path
 
@@ -91,6 +81,58 @@ def get_average_frame(
         return average_frame
     else:
         logging.warning(f"Could not generate average frame from {filepath_video}")
+        return None
+
+def get_std_frame(
+    filepath_video: Path,
+    max_frames: int | None = None,
+    average_frame: NDArray[np.uint8] | None = None,
+) -> NDArray[np.uint8] | None:
+    """
+    Extract the standard deviation frame from `filepath_video` using `max_frames` if
+    specified, otherwise use all frames.
+
+    Returns:
+        array_image or None
+    """
+    average_frame = average_frame if average_frame is not None else get_average_frame(filepath_video=filepath_video, max_frames=max_frames)
+    if average_frame is None:
+        logging.error(f"Could not get the std frame from {filepath_video}")
+        return None
+
+    logging.info(f"Opening Video {filepath_video}")
+    cap = cv2.VideoCapture(str(filepath_video))
+    number_frames_to_use = max_frames or int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    logging.info(
+        f"Extracting std frame from {filepath_video} using {number_frames_to_use} frames"
+    )
+
+    number_frames_processed = 0
+    avg_frame = average_frame.astype("float")
+    frame_deviation_square_sum = None
+
+    while cap.isOpened():
+        if number_frames_processed >= number_frames_to_use:
+            break
+        _, frame = cap.read()
+        if frame is None:
+            break
+
+        frame_deviation_square_sum = (
+            np.square(frame.astype(float) - avg_frame)
+            if frame_deviation_square_sum is None
+            else frame_deviation_square_sum + np.square(frame.astype(float) - avg_frame)
+            )
+        number_frames_processed += 1
+
+    logging.info(f"Closing video {filepath_video}")
+    cap.release()
+
+    if frame_deviation_square_sum is not None:
+        frame_std = np.sqrt(frame_deviation_square_sum / number_frames_processed).astype("uint8")
+        return frame_std
+    else:
+        logging.warning(f"Could not generate standard deviation frame from {filepath_video}")
         return None
 
 
