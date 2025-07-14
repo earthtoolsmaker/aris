@@ -55,8 +55,8 @@ def get_average_frame(
     """
     Extract the average frame from the specified video file.
 
-    This function opens the video file and computes the average of the frames 
-    up to a specified maximum number of frames. If no maximum is specified, 
+    This function opens the video file and computes the average of the frames
+    up to a specified maximum number of frames. If no maximum is specified,
     all frames will be used to compute the average.
 
     Args:
