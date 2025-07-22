@@ -63,3 +63,12 @@ uv run python ./scripts/encode_video_with_codec.py \
   --dir-save ./export/mp4_h264 \
   --video-codec "h264"
 ```
+
+Chunk the mp4 video files into smaller video clips:
+
+```bash
+uv run python ./scripts/chunk_video.py \
+  --dir-videos ./data/mp4/jansen-lake-2025/ARIS_2025_05_11/ \
+  --dir-save ./chunks/jansen-lake-2025/ARIS_2025_05_11/ \
+  --duration-seconds 120
+```
