@@ -55,6 +55,7 @@ from numpy.typing import NDArray
 from tqdm import tqdm
 
 import aris.frame as frame_utils
+import aris.preprocessing
 import aris.video.utils as video_utils
 
 
@@ -141,62 +142,6 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-def create_gaussian_kernel(window_size: int, sigma: float) -> NDArray[np.float32]:
-    """
-    Create a 1D Gaussian kernel for temporal weighting.
-
-    The kernel is centered at the middle of the window, with weights decaying
-    based on temporal distance according to a Gaussian function. Weights are
-    normalized to sum to 1.0.
-
-    Args:
-        window_size: Size of the temporal window (must be odd)
-        sigma: Standard deviation of the Gaussian function
-
-    Returns:
-        NDArray[np.float32]: 1D array of normalized Gaussian weights
-
-    Example:
-        >>> kernel = create_gaussian_kernel(5, 1.0)
-        >>> # Returns weights for [t-2, t-1, t, t+1, t+2]
-        >>> # with highest weight at center (t)
-    """
-    center = window_size // 2
-    weights = np.array(
-        [np.exp(-((i - center) ** 2) / (2 * sigma**2)) for i in range(window_size)],
-        dtype=np.float32,
-    )
-    # Normalize so weights sum to 1
-    return weights / np.sum(weights)
-
-
-def smooth_frames_temporal(
-    frames: list[NDArray[np.uint8]], weights: NDArray[np.float32]
-) -> NDArray[np.uint8]:
-    """
-    Apply Gaussian weighted temporal smoothing to a window of frames.
-
-    Computes a weighted average of frames using the provided Gaussian weights.
-    This reduces temporal noise while preserving important features.
-
-    Args:
-        frames: List of frames in the temporal window
-        weights: Gaussian weights for each frame (must have same length as frames)
-
-    Returns:
-        NDArray[np.uint8]: Smoothed frame
-
-    Note:
-        Weights should already be normalized to sum to 1.0
-    """
-    # Convert to float for accurate weighted averaging
-    smoothed = np.zeros_like(frames[0], dtype=np.float32)
-
-    for frame, weight in zip(frames, weights):
-        smoothed += weight * frame.astype(np.float32)
-
-    # Convert back to uint8
-    return smoothed.astype(np.uint8)
 
 
 if __name__ == "__main__":
@@ -223,7 +168,7 @@ if __name__ == "__main__":
     logger.info(f"Video FPS: {fps}")
 
     # Create Gaussian kernel
-    gaussian_weights = create_gaussian_kernel(window_size, sigma)
+    gaussian_weights = aris.preprocessing.create_gaussian_kernel(window_size, sigma)
     center = window_size // 2
     logger.info(
         f"Temporal window: {window_size} frames ({center} before + current + {center} after)"
@@ -310,7 +255,9 @@ if __name__ == "__main__":
             active_weights = active_weights / np.sum(active_weights)
 
             # Apply weighted smoothing
-            stabilized_frame = smooth_frames_temporal(window_frames, active_weights)
+            stabilized_frame = aris.preprocessing.smooth_frames_temporal(
+                window_frames, active_weights
+            )
 
             # Write frame immediately (memory-efficient!)
             video_writer.write(stabilized_frame)
@@ -343,7 +290,9 @@ if __name__ == "__main__":
             active_weights = active_weights / np.sum(active_weights)
 
             # Apply weighted smoothing
-            stabilized_frame = smooth_frames_temporal(window_frames, active_weights)
+            stabilized_frame = aris.preprocessing.smooth_frames_temporal(
+                window_frames, active_weights
+            )
 
             # Write frame immediately
             video_writer.write(stabilized_frame)

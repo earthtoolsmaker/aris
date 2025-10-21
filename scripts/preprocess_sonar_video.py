@@ -60,6 +60,7 @@ from numpy.typing import NDArray
 from tqdm import tqdm
 
 import aris.frame as frame_utils
+import aris.preprocessing
 import aris.video.utils as video_utils
 
 
@@ -190,84 +191,6 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-def process_frame(
-    frame: NDArray[np.uint8],
-    bg_subtractor: cv2.BackgroundSubtractorMOG2,
-    gaussian_kernel: int,
-    gaussian_sigma: float,
-    guided_radius: int,
-    guided_eps: float,
-    frame_history: NDArray[np.uint8] | None,
-    frame_count: int,
-    temporal_weight: float,
-) -> tuple[NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint8]]:
-    """
-    Process a single frame with full Salmon Computer Vision pipeline.
-
-    This implements steps 1-4 from the Salmon Computer Vision pipeline:
-    1. Apply Gaussian blur to reduce noise in sonar imagery
-    2. Apply MOG2 background subtraction to isolate moving objects
-    3. Apply guided filter to refine MOG2 mask using frame edge information
-    4. Apply temporal smoothing to reduce frame-to-frame noise
-
-    Args:
-        frame: Input frame (grayscale or RGB)
-        bg_subtractor: MOG2 background subtractor instance
-        gaussian_kernel: Gaussian blur kernel size (must be odd)
-        gaussian_sigma: Gaussian blur sigma value
-        guided_radius: Guided filter radius
-        guided_eps: Guided filter epsilon (regularization)
-        frame_history: Previous processed frame for temporal smoothing (None for first frame)
-        frame_count: Current frame number (0-indexed)
-        temporal_weight: Weight for current frame in temporal blending (0-1)
-
-    Returns:
-        tuple: (blurred_frame, preprocessed_frame, preprocessed_frame_for_next_history)
-            - blurred_frame: Output of step 1 (for blue channel visualization)
-            - preprocessed_frame: Output of full pipeline (for red channel visualization)
-            - preprocessed_frame_for_next_history: Same as preprocessed_frame, for history tracking
-    """
-    # Step 1: Apply Gaussian blur to reduce noise
-    # This is critical for sonar imagery which has significant speckle noise
-    frame_blurred = cv2.GaussianBlur(
-        frame, (gaussian_kernel, gaussian_kernel), gaussian_sigma
-    )
-
-    # Step 2: Apply MOG2 background subtraction
-    # This isolates moving objects (fish) from the static background
-    mog_mask = bg_subtractor.apply(frame_blurred)
-
-    # Step 3: Apply guided filter
-    # Convert grayscale MOG mask to RGB for guided filter
-    mog_mask_rgb = cv2.cvtColor(mog_mask, cv2.COLOR_GRAY2RGB)
-
-    # Apply guided filter: use original frame as guide to refine MOG mask
-    # This preserves edges from the original frame while smoothing the MOG mask
-    # Requires opencv-contrib-python for cv2.ximgproc.guidedFilter
-    guided_mog_rgb = cv2.ximgproc.guidedFilter(
-        guide=frame_blurred,
-        src=mog_mask_rgb,
-        radius=guided_radius,
-        eps=guided_eps,
-    )
-
-    # Convert back to grayscale
-    guided_mog = cv2.cvtColor(guided_mog_rgb, cv2.COLOR_BGR2GRAY)
-
-    # Step 4: Apply temporal smoothing
-    # Blend current frame with history to reduce temporal noise
-    if frame_count < 2 or frame_history is None:
-        # For first couple frames, no history available
-        processed_frame = guided_mog
-    else:
-        # Blend: temporal_weight * current + (1-temporal_weight) * history
-        # Default: 0.8 * current + 0.2 * history
-        processed_frame = (
-            temporal_weight * guided_mog.astype(np.float32)
-            + (1 - temporal_weight) * frame_history.astype(np.float32)
-        ).astype(np.uint8)
-
-    return frame_blurred, processed_frame, processed_frame
 
 
 if __name__ == "__main__":
@@ -335,7 +258,7 @@ if __name__ == "__main__":
             frame_gray = frame_rgb_input[:, :, 0]
 
             # Process the frame with full pipeline
-            frame_blurred, frame_preprocessed, frame_for_history = process_frame(
+            frame_blurred, frame_preprocessed, frame_for_history = aris.preprocessing.preprocess_frame(
                 frame=frame_gray,
                 bg_subtractor=mog_subtractor,
                 gaussian_kernel=gaussian_kernel,
@@ -351,14 +274,9 @@ if __name__ == "__main__":
             frame_history = frame_for_history
 
             # Create dual-channel RGB visualization
-            # Blue channel: Gaussian-blurred input (shows sonar structure)
-            # Green channel: Empty (zeros)
-            # Red channel: Preprocessed output (shows detected motion)
-            visualization_frame = np.dstack([
-                frame_blurred,  # Blue channel
-                np.zeros_like(frame_blurred),  # Green channel (empty)
-                frame_preprocessed,  # Red channel
-            ])
+            visualization_frame = aris.preprocessing.create_dual_channel_visualization(
+                frame_blurred, frame_preprocessed
+            )
             processed_frames.append(visualization_frame)
 
             frame_count += 1
