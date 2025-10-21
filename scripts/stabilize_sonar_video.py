@@ -46,6 +46,7 @@ Parameters:
 
 import argparse
 import logging
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -53,6 +54,7 @@ import numpy as np
 from numpy.typing import NDArray
 from tqdm import tqdm
 
+import aris.frame as frame_utils
 import aris.video.utils as video_utils
 
 
@@ -243,67 +245,121 @@ if __name__ == "__main__":
             f"This will work but may not provide optimal smoothing."
         )
 
-    # Read all frames into memory for sliding window approach
-    logger.info("Reading frames from video...")
-    all_frames = []
-    with tqdm(total=frames_to_process, desc="Reading frames", unit="frame") as pbar:
-        for _ in range(frames_to_process):
+    # Initialize video writer for on-the-go output
+    # Get frame dimensions from first frame
+    ret, first_frame = cap.read()
+    if not ret:
+        logger.error("Could not read first frame from video")
+        exit(1)
+
+    height, width = first_frame.shape[:2]
+    filepath_save.parent.mkdir(parents=True, exist_ok=True)
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    video_writer = cv2.VideoWriter(
+        str(filepath_save), fourcc, int(fps), (width, height)
+    )
+    logger.info(f"Initialized video writer: {width}x{height} at {fps} fps")
+
+    # Initialize sliding window buffer with first frame
+    frame_buffer = deque([first_frame], maxlen=window_size)
+    frame_idx = 0
+    frames_written = 0
+
+    logger.info("Processing frames with sliding window (memory-efficient)...")
+
+    with tqdm(total=frames_to_process, desc="Stabilizing frames", unit="frame") as pbar:
+        # Phase 1: Fill the buffer to have "future" frames (need center frames ahead)
+        # Read center frames ahead to fill the right side of the window
+        while len(frame_buffer) < min(window_size, center + 1) and frame_idx < frames_to_process - 1:
             ret, frame = cap.read()
             if not ret or frame is None:
                 break
-            all_frames.append(frame)
-            pbar.update(1)
+            frame_buffer.append(frame)
+            frame_idx += 1
 
-    cap.release()
-    logger.info(f"Read {len(all_frames)} frames into memory")
+        # Phase 2: Main processing loop - slide window and output frames
+        while frame_idx < frames_to_process:
+            # Calculate position of output frame within buffer
+            # For a full window, output frame is at position 'center'
+            # For incomplete windows at start, output frame is at position 0
+            buffer_list = list(frame_buffer)
+            output_position = min(frames_written, center)
 
-    # Process frames with sliding window
-    logger.info("Applying Gaussian temporal smoothing...")
-    stabilized_frames = []
-
-    with tqdm(total=len(all_frames), desc="Stabilizing frames", unit="frame") as pbar:
-        for frame_idx in range(len(all_frames)):
-            # Calculate window boundaries for current frame
-            # Handle edges: first and last frames have incomplete windows
-            window_start = max(0, frame_idx - center)
-            window_end = min(len(all_frames), frame_idx + center + 1)
-
-            # Extract frames in window
-            window_frames = all_frames[window_start:window_end]
-
-            # Adjust weights for edge frames (incomplete windows)
-            if len(window_frames) < window_size:
-                # Calculate which weights to use
-                if frame_idx < center:
-                    # Near start: missing frames before
-                    missing_before = center - frame_idx
-                    active_weights = gaussian_weights[missing_before:]
-                else:
-                    # Near end: missing frames after
-                    missing_after = (frame_idx + center + 1) - len(all_frames)
-                    active_weights = gaussian_weights[: window_size - missing_after]
-
-                # Renormalize weights to sum to 1
-                active_weights = active_weights / np.sum(active_weights)
+            # Determine which frames to use for smoothing
+            # At start: use fewer frames (incomplete window on left)
+            # At end: use fewer frames (incomplete window on right)
+            if frames_written < center:
+                # Near start: use frames from position 0 to (frames_written + center + 1)
+                window_frames = buffer_list[: min(len(buffer_list), frames_written + center + 1)]
+                # Use weights starting from the appropriate position
+                missing_before = center - frames_written
+                active_weights = gaussian_weights[missing_before : missing_before + len(window_frames)]
+            elif frame_idx >= frames_to_process - 1 and len(buffer_list) < window_size:
+                # Near end: incomplete window on right
+                window_frames = buffer_list[max(0, len(buffer_list) - window_size):]
+                # Calculate how many frames we're missing on the right
+                frames_in_window = len(window_frames)
+                active_weights = gaussian_weights[:frames_in_window]
             else:
+                # Middle: full window
+                window_frames = buffer_list
                 active_weights = gaussian_weights
+
+            # Renormalize weights
+            active_weights = active_weights / np.sum(active_weights)
 
             # Apply weighted smoothing
             stabilized_frame = smooth_frames_temporal(window_frames, active_weights)
-            stabilized_frames.append(stabilized_frame)
 
+            # Write frame immediately (memory-efficient!)
+            video_writer.write(stabilized_frame)
+            frames_written += 1
             pbar.update(1)
 
-    logger.info(f"Successfully stabilized {len(stabilized_frames)} frames")
+            # Read next frame and slide window
+            if frame_idx < frames_to_process - 1:
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    frame_buffer.append(frame)
+                frame_idx += 1
+            else:
+                # No more input frames, but we still need to output remaining buffered frames
+                if len(frame_buffer) > 1:
+                    frame_buffer.popleft()  # Remove oldest frame
+                else:
+                    break
 
-    # Save the stabilized video
-    filepath_save.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Saving stabilized video to: {filepath_save}")
+        # Phase 3: Output remaining frames in buffer (last 'center' frames)
+        while len(frame_buffer) > 0 and frames_written < frames_to_process:
+            buffer_list = list(frame_buffer)
 
-    video_utils.save_frames_to_video(
-        frames=stabilized_frames,
-        filepath_save=filepath_save,
-        fps=int(fps),
-    )
+            # Use all remaining frames in buffer
+            window_frames = buffer_list
+            frames_in_window = len(window_frames)
 
+            # Use the first 'frames_in_window' weights
+            active_weights = gaussian_weights[:frames_in_window]
+            active_weights = active_weights / np.sum(active_weights)
+
+            # Apply weighted smoothing
+            stabilized_frame = smooth_frames_temporal(window_frames, active_weights)
+
+            # Write frame immediately
+            video_writer.write(stabilized_frame)
+            frames_written += 1
+            pbar.update(1)
+
+            # Remove oldest frame from buffer
+            if len(frame_buffer) > 1:
+                frame_buffer.popleft()
+            else:
+                break
+
+    # Cleanup
+    cap.release()
+    video_writer.release()
+
+    logger.info(f"Successfully stabilized and wrote {frames_written} frames")
+    logger.info(f"Output saved to: {filepath_save}")
     logger.info("Done ✅")
