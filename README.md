@@ -81,3 +81,80 @@ uv run python ./scripts/chunk_video.py \
   --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
   --duration-seconds 120
 ```
+
+### Video Processing Pipeline
+
+Stabilize sonar video using bidirectional Gaussian temporal smoothing:
+
+```bash
+uv run python ./scripts/stabilize_sonar_video.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/2025-05-06_001500.mp4 \
+  --filepath-save ./data/stabilized/2025-05-06_001500.mp4 \
+  --window-size 5 \
+  --sigma 1.0
+```
+
+Preprocess sonar video for motion detection (Gaussian blur, MOG2, guided filter, temporal smoothing):
+
+```bash
+uv run python ./scripts/preprocess_sonar_video.py \
+  --filepath-video ./data/stabilized/2025-05-06_001500.mp4 \
+  --filepath-save ./data/preprocessed/2025-05-06_001500.mp4 \
+  --gaussian-kernel 3 \
+  --mog-history 500 \
+  --guided-radius 10
+```
+
+**Recommended:** Combine stabilization and preprocessing in a single pass (more efficient):
+
+```bash
+uv run python ./scripts/stabilize_and_preprocess_sonar_video.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/2025-05-06_001500.mp4 \
+  --filepath-save ./data/processed/2025-05-06_001500.mp4
+```
+
+The preprocessed output is an RGB video with dual-channel visualization:
+- **Blue channel**: Gaussian-blurred input (shows sonar structure)
+- **Red channel**: Preprocessed output (shows detected motion)
+- **Magenta/purple**: Motion overlapping with sonar structures
+
+## Typical Workflow
+
+Complete pipeline for processing ARIS sonar files:
+
+```bash
+# 1. Convert ARIS files to MP4 videos
+uv run python ./scripts/convert_aris_to_video.py \
+  --dir-aris ./data/aris/location/ \
+  --dir-save ./data/mp4/location/
+
+# 2. Stabilize and preprocess for motion detection (combined, recommended)
+uv run python ./scripts/stabilize_and_preprocess_sonar_video.py \
+  --filepath-video ./data/mp4/location/file.mp4 \
+  --filepath-save ./data/processed/file.mp4
+
+# 3. Optional: Chunk processed videos into segments
+uv run python ./scripts/chunk_video.py \
+  --filepath-video ./data/processed/file.mp4 \
+  --dir-save ./data/chunks/ \
+  --duration-seconds 120
+```
+
+Alternative workflow (separate stabilization and preprocessing):
+
+```bash
+# 1. Convert ARIS to MP4
+uv run python ./scripts/convert_aris_to_video.py \
+  --dir-aris ./data/aris/location/ \
+  --dir-save ./data/mp4/location/
+
+# 2a. Stabilize video
+uv run python ./scripts/stabilize_sonar_video.py \
+  --filepath-video ./data/mp4/location/file.mp4 \
+  --filepath-save ./data/stabilized/file.mp4
+
+# 2b. Preprocess stabilized video
+uv run python ./scripts/preprocess_sonar_video.py \
+  --filepath-video ./data/stabilized/file.mp4 \
+  --filepath-save ./data/preprocessed/file.mp4
+```
