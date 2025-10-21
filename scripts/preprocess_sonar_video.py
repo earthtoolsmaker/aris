@@ -9,8 +9,16 @@ from Salmon Computer Vision (https://github.com/Salmon-Computer-Vision/salmon-vi
 3. Guided filter to refine MOG2 mask using original frame edge information
 4. Temporal smoothing to reduce frame-to-frame noise (0.8*current + 0.2*history)
 
-The output is a grayscale video showing the refined preprocessed frames, which
-highlights moving objects with reduced noise.
+The output is an RGB video with dual-channel visualization:
+- Blue channel: Gaussian-blurred sonar frames (shows input structure after noise reduction)
+- Green channel: Empty (black)
+- Red channel: Fully preprocessed frames (shows detected motion)
+
+This visualization makes it easy to compare input and output:
+- Pure blue regions: Static sonar background
+- Pure red regions: Detected moving objects (fish)
+- Magenta/purple regions: Motion overlapping with sonar structures
+- Black regions: No signal in either channel
 
 Usage:
     # Process a single video with default parameters
@@ -192,7 +200,7 @@ def process_frame(
     frame_history: NDArray[np.uint8] | None,
     frame_count: int,
     temporal_weight: float,
-) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint8]]:
     """
     Process a single frame with full Salmon Computer Vision pipeline.
 
@@ -214,8 +222,10 @@ def process_frame(
         temporal_weight: Weight for current frame in temporal blending (0-1)
 
     Returns:
-        tuple: (preprocessed_frame, preprocessed_frame_for_next_history)
-            Both are the same value, returned twice for convenience
+        tuple: (blurred_frame, preprocessed_frame, preprocessed_frame_for_next_history)
+            - blurred_frame: Output of step 1 (for blue channel visualization)
+            - preprocessed_frame: Output of full pipeline (for red channel visualization)
+            - preprocessed_frame_for_next_history: Same as preprocessed_frame, for history tracking
     """
     # Step 1: Apply Gaussian blur to reduce noise
     # This is critical for sonar imagery which has significant speckle noise
@@ -257,7 +267,7 @@ def process_frame(
             + (1 - temporal_weight) * frame_history.astype(np.float32)
         ).astype(np.uint8)
 
-    return processed_frame, processed_frame
+    return frame_blurred, processed_frame, processed_frame
 
 
 if __name__ == "__main__":
@@ -316,13 +326,17 @@ if __name__ == "__main__":
 
     with tqdm(total=frames_to_process, desc="Processing frames", unit="frame") as pbar:
         while cap.isOpened() and frame_count < frames_to_process:
-            ret, frame = cap.read()
-            if not ret or frame is None:
+            ret, frame_rgb_input = cap.read()
+            if not ret or frame_rgb_input is None:
                 break
 
+            # Extract blue channel from RGB input (sonar videos have identical channels)
+            # This gives us a grayscale array for processing
+            frame_gray = frame_rgb_input[:, :, 0]
+
             # Process the frame with full pipeline
-            frame_processed, frame_for_history = process_frame(
-                frame=frame,
+            frame_blurred, frame_preprocessed, frame_for_history = process_frame(
+                frame=frame_gray,
                 bg_subtractor=mog_subtractor,
                 gaussian_kernel=gaussian_kernel,
                 gaussian_sigma=gaussian_sigma,
@@ -336,10 +350,16 @@ if __name__ == "__main__":
             # Update history for next frame
             frame_history = frame_for_history
 
-            # Convert grayscale output to RGB for video saving
-            # (video codecs expect 3-channel input)
-            frame_rgb = frame_utils.grayscale_to_rgb(frame_processed)
-            processed_frames.append(frame_rgb)
+            # Create dual-channel RGB visualization
+            # Blue channel: Gaussian-blurred input (shows sonar structure)
+            # Green channel: Empty (zeros)
+            # Red channel: Preprocessed output (shows detected motion)
+            visualization_frame = np.dstack([
+                frame_blurred,  # Blue channel
+                np.zeros_like(frame_blurred),  # Green channel (empty)
+                frame_preprocessed,  # Red channel
+            ])
+            processed_frames.append(visualization_frame)
 
             frame_count += 1
             pbar.update(1)
