@@ -1,15 +1,29 @@
-# python sonar aris
+# ARIS Sonar Processing Toolkit
 
-Process ARIS sonar files with Python.
+A Python toolkit for processing ARIS (Adaptive Resolution Imaging Sonar) files. Convert sonar data to video, apply motion detection preprocessing, and stabilize jittery footage.
+
+## What is ARIS?
+
+ARIS is a high-frequency imaging sonar system used for underwater imaging and mapping. Unlike traditional optical cameras that rely on light, ARIS uses sound waves to create detailed images in murky water, darkness, or sediment-laden environments. This toolkit processes ARIS sonar recordings into analyzable video formats and applies advanced preprocessing for fish detection and motion analysis.
+
+## Features
+
+- **ARIS to Video Conversion**: Convert proprietary ARIS files to standard MP4 format
+- **Video Stabilization**: Reduce temporal jitter using bidirectional Gaussian smoothing
+- **Motion Detection**: Preprocessing pipeline with Gaussian blur, MOG2 background subtraction, guided filtering, and temporal smoothing
+- **Dual-Channel Visualization**: RGB output showing both input (blue) and detected motion (red) for easy analysis
+- **Combined Processing**: Single-pass stabilization + preprocessing for maximum efficiency
+- **Batch Processing**: Process entire directories with progress tracking
+- **Video Utilities**: Chunking, codec conversion, frame extraction, and averaging
 
 ## Setup
 
-### Binaries dependencies
+### Requirements
 
-- [ffmpeg](https://www.ffmpeg.org/): A complete, cross-platform solution to
-record, convert and stream audio and video.
+- **Python**: 3.13+ (managed with `uv`)
+- **FFmpeg**: [Download here](https://www.ffmpeg.org/) - A complete, cross-platform solution to record, convert and stream audio and video
 
-### 🐍 Python dependencies
+### Python Dependencies
 
 Install `uv` with `pipx`:
 
@@ -23,7 +37,7 @@ Create a virtualenv and install the dependencies with `uv`:
 uv sync
 ```
 
-Activate the `uv` virutalenv:
+Activate the `uv` virtualenv:
 
 ```sh
 source .venv/bin/activate
@@ -31,7 +45,11 @@ source .venv/bin/activate
 
 ## Scripts
 
-Convert all ARIS files from a directory into MP4 videos:
+### Core Conversion
+
+**Convert ARIS files to MP4 videos:**
+
+Convert all ARIS files from a directory:
 
 ```bash
 uv run python ./scripts/convert_aris_to_video.py \
@@ -39,7 +57,7 @@ uv run python ./scripts/convert_aris_to_video.py \
   --dir-save ./data/mp4/jansen-lake-2025/ARIS_2025_05_06
 ```
 
-Convert one ARIS file into an MP4 video:
+Convert a single ARIS file:
 
 ```bash
 uv run python ./scripts/convert_aris_to_video.py \
@@ -47,65 +65,11 @@ uv run python ./scripts/convert_aris_to_video.py \
   --dir-save ./data/mp4/jansen-lake-2025/ARIS_2025_05_06
 ```
 
-Extract the average frame from a video:
-
-```bash
-uv run python ./scripts/extract_average_video_frame.py \
---filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.mp4 \
---filepath-save ./data/jpg_average_frame/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.jpg
-```
-
-Encode all mp4 video files with a new codec:
-
-```bash
-uv run python ./scripts/encode_video_with_codec.py \
-  --dir-videos ./data/mp4/ \
-  --dir-save ./export/mp4_h264 \
-  --video-codec "h264"
-```
-
-Chunk a large video file into non overlapping segments:
-
-```bash
-uv run python ./scripts/chunk_video.py \
-  --filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_000000.mp4 \
-  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
-  --duration-seconds 120
-```
-
-Chunk a directory of video files into non overlapping segments:
-
-```bash
-uv run python ./scripts/chunk_video.py \
-  --dir-videos ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/ \
-  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
-  --duration-seconds 120
-```
-
 ### Video Processing Pipeline
 
-Stabilize sonar video using bidirectional Gaussian temporal smoothing:
+These scripts apply advanced preprocessing to sonar videos for motion detection and analysis.
 
-```bash
-uv run python ./scripts/stabilize_sonar_video.py \
-  --filepath-video ./data/mp4/jansen-lake-2025/2025-05-06_001500.mp4 \
-  --filepath-save ./data/stabilized/2025-05-06_001500.mp4 \
-  --window-size 5 \
-  --sigma 1.0
-```
-
-Preprocess sonar video for motion detection (Gaussian blur, MOG2, guided filter, temporal smoothing):
-
-```bash
-uv run python ./scripts/preprocess_sonar_video.py \
-  --filepath-video ./data/stabilized/2025-05-06_001500.mp4 \
-  --filepath-save ./data/preprocessed/2025-05-06_001500.mp4 \
-  --gaussian-kernel 3 \
-  --mog-history 500 \
-  --guided-radius 10
-```
-
-**Recommended:** Combine stabilization and preprocessing in a single pass (more efficient):
+**Combined pipeline (recommended)** - Stabilize and preprocess in a single pass (more efficient):
 
 ```bash
 uv run python ./scripts/stabilize_and_preprocess_sonar_video.py \
@@ -118,43 +82,116 @@ The preprocessed output is an RGB video with dual-channel visualization:
 - **Red channel**: Preprocessed output (shows detected motion)
 - **Magenta/purple**: Motion overlapping with sonar structures
 
-## Typical Workflow
+**Alternative: Individual scripts** - Run stabilization and preprocessing separately:
 
-Complete pipeline for processing ARIS sonar files:
+Stabilize sonar video using bidirectional Gaussian temporal smoothing:
 
 ```bash
-# 1. Convert ARIS files to MP4 videos
+uv run python ./scripts/stabilize_sonar_video.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/2025-05-06_001500.mp4 \
+  --filepath-save ./data/stabilized/2025-05-06_001500.mp4 \
+  --window-size 5 \
+  --sigma 1.0
+```
+
+Preprocess stabilized video for motion detection:
+
+```bash
+uv run python ./scripts/preprocess_sonar_video.py \
+  --filepath-video ./data/stabilized/2025-05-06_001500.mp4 \
+  --filepath-save ./data/preprocessed/2025-05-06_001500.mp4 \
+  --gaussian-kernel 3 \
+  --mog-history 500 \
+  --guided-radius 10
+```
+
+### Video Utilities
+
+**Extract average frame** from a video (useful for thumbnails):
+
+```bash
+uv run python ./scripts/extract_average_video_frame.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.mp4 \
+  --filepath-save ./data/jpg_average_frame/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_233000.jpg
+```
+
+**Encode videos with new codec** (e.g., H.264 for better compatibility):
+
+```bash
+uv run python ./scripts/encode_video_with_codec.py \
+  --dir-videos ./data/mp4/ \
+  --dir-save ./export/mp4_h264 \
+  --video-codec "h264"
+```
+
+**Chunk large videos** into non-overlapping segments:
+
+Chunk a single video file:
+
+```bash
+uv run python ./scripts/chunk_video.py \
+  --filepath-video ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/2025-05-06_000000.mp4 \
+  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
+  --duration-seconds 120
+```
+
+Chunk all videos in a directory:
+
+```bash
+uv run python ./scripts/chunk_video.py \
+  --dir-videos ./data/mp4/jansen-lake-2025/ARIS_2025_05_06/ \
+  --dir-save ./data/chunks/jansen-lake-2025/ARIS_2025_05_06/ \
+  --duration-seconds 120
+```
+
+## Typical Workflow
+
+### Recommended: 3-Step Pipeline
+
+The most efficient workflow for processing ARIS sonar files:
+
+```bash
+# Step 1: Convert ARIS files to MP4 videos
 uv run python ./scripts/convert_aris_to_video.py \
   --dir-aris ./data/aris/location/ \
   --dir-save ./data/mp4/location/
 
-# 2. Stabilize and preprocess for motion detection (combined, recommended)
+# Step 2: Stabilize and preprocess for motion detection (single-pass, efficient)
+# Output: RGB video with blue=input, red=detected motion
 uv run python ./scripts/stabilize_and_preprocess_sonar_video.py \
   --filepath-video ./data/mp4/location/file.mp4 \
   --filepath-save ./data/processed/file.mp4
 
-# 3. Optional: Chunk processed videos into segments
+# Step 3 (Optional): Chunk large videos into manageable segments
 uv run python ./scripts/chunk_video.py \
   --filepath-video ./data/processed/file.mp4 \
   --dir-save ./data/chunks/ \
   --duration-seconds 120
 ```
 
-Alternative workflow (separate stabilization and preprocessing):
+### Alternative: 4-Step Pipeline
+
+If you need separate control over stabilization and preprocessing:
 
 ```bash
-# 1. Convert ARIS to MP4
+# Step 1: Convert ARIS to MP4
 uv run python ./scripts/convert_aris_to_video.py \
   --dir-aris ./data/aris/location/ \
   --dir-save ./data/mp4/location/
 
-# 2a. Stabilize video
+# Step 2: Stabilize video (reduce temporal jitter)
 uv run python ./scripts/stabilize_sonar_video.py \
   --filepath-video ./data/mp4/location/file.mp4 \
   --filepath-save ./data/stabilized/file.mp4
 
-# 2b. Preprocess stabilized video
+# Step 3: Preprocess for motion detection
 uv run python ./scripts/preprocess_sonar_video.py \
   --filepath-video ./data/stabilized/file.mp4 \
   --filepath-save ./data/preprocessed/file.mp4
+
+# Step 4 (Optional): Chunk videos
+uv run python ./scripts/chunk_video.py \
+  --filepath-video ./data/preprocessed/file.mp4 \
+  --dir-save ./data/chunks/ \
+  --duration-seconds 120
 ```
