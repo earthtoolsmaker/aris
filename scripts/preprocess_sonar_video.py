@@ -1,13 +1,16 @@
 """
-CLI script to preprocess sonar videos with Gaussian blur and MOG2 background subtraction.
+CLI script to preprocess sonar videos with Gaussian blur, MOG2 background subtraction,
+guided filtering, and temporal smoothing.
 
 This script applies a preprocessing pipeline to sonar videos based on the approach
 from Salmon Computer Vision (https://github.com/Salmon-Computer-Vision/salmon-vision-sonar):
 1. Gaussian blur to reduce noise in sonar imagery
 2. MOG2 (Mixture of Gaussians) background subtraction to isolate moving objects (fish)
+3. Guided filter to refine MOG2 mask using original frame edge information
+4. Temporal smoothing to reduce frame-to-frame noise (0.8*current + 0.2*history)
 
-The output is a grayscale video showing the MOG2 background subtraction mask, which
-highlights moving objects against the background.
+The output is a grayscale video showing the refined preprocessed frames, which
+highlights moving objects with reduced noise.
 
 Usage:
     # Process a single video with default parameters
@@ -60,7 +63,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         argparse.ArgumentParser: Configured argument parser
     """
     parser = argparse.ArgumentParser(
-        description="Preprocess sonar videos with Gaussian blur and MOG2 background subtraction."
+        description="Preprocess sonar videos with Gaussian blur, MOG2, guided filter, and temporal smoothing."
     )
     parser.add_argument(
         "--filepath-video",
@@ -91,6 +94,24 @@ def make_cli_parser() -> argparse.ArgumentParser:
         type=int,
         default=500,
         help="MOG2 background subtractor history length (default: 500)",
+    )
+    parser.add_argument(
+        "--guided-radius",
+        type=int,
+        default=10,
+        help="Guided filter radius (default: 10, same as Salmon Vision)",
+    )
+    parser.add_argument(
+        "--guided-eps",
+        type=float,
+        default=0.01,
+        help="Guided filter epsilon/regularization (default: 0.01, same as Salmon Vision)",
+    )
+    parser.add_argument(
+        "--temporal-weight",
+        type=float,
+        default=0.8,
+        help="Weight for current frame in temporal smoothing (default: 0.8, meaning 80%% current + 20%% history)",
     )
     parser.add_argument(
         "--max-frames",
@@ -140,6 +161,24 @@ def validate_parsed_args(args: dict) -> bool:
         )
         return False
 
+    if args["guided_radius"] <= 0:
+        logging.error(
+            f"Invalid --guided-radius: must be positive, got {args['guided_radius']}"
+        )
+        return False
+
+    if args["guided_eps"] <= 0:
+        logging.error(
+            f"Invalid --guided-eps: must be positive, got {args['guided_eps']}"
+        )
+        return False
+
+    if not (0 < args["temporal_weight"] <= 1.0):
+        logging.error(
+            f"Invalid --temporal-weight: must be between 0 and 1, got {args['temporal_weight']}"
+        )
+        return False
+
     return True
 
 
@@ -148,22 +187,35 @@ def process_frame(
     bg_subtractor: cv2.BackgroundSubtractorMOG2,
     gaussian_kernel: int,
     gaussian_sigma: float,
-) -> NDArray[np.uint8]:
+    guided_radius: int,
+    guided_eps: float,
+    frame_history: NDArray[np.uint8] | None,
+    frame_count: int,
+    temporal_weight: float,
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
     """
-    Process a single frame with Gaussian blur and MOG2 background subtraction.
+    Process a single frame with full Salmon Computer Vision pipeline.
 
-    This implements steps 1-2 from the Salmon Computer Vision pipeline:
+    This implements steps 1-4 from the Salmon Computer Vision pipeline:
     1. Apply Gaussian blur to reduce noise in sonar imagery
     2. Apply MOG2 background subtraction to isolate moving objects
+    3. Apply guided filter to refine MOG2 mask using frame edge information
+    4. Apply temporal smoothing to reduce frame-to-frame noise
 
     Args:
         frame: Input frame (grayscale or RGB)
         bg_subtractor: MOG2 background subtractor instance
         gaussian_kernel: Gaussian blur kernel size (must be odd)
         gaussian_sigma: Gaussian blur sigma value
+        guided_radius: Guided filter radius
+        guided_eps: Guided filter epsilon (regularization)
+        frame_history: Previous processed frame for temporal smoothing (None for first frame)
+        frame_count: Current frame number (0-indexed)
+        temporal_weight: Weight for current frame in temporal blending (0-1)
 
     Returns:
-        Preprocessed frame (grayscale MOG2 mask)
+        tuple: (preprocessed_frame, preprocessed_frame_for_next_history)
+            Both are the same value, returned twice for convenience
     """
     # Step 1: Apply Gaussian blur to reduce noise
     # This is critical for sonar imagery which has significant speckle noise
@@ -173,9 +225,39 @@ def process_frame(
 
     # Step 2: Apply MOG2 background subtraction
     # This isolates moving objects (fish) from the static background
-    frame_mog = bg_subtractor.apply(frame_blurred)
+    mog_mask = bg_subtractor.apply(frame_blurred)
 
-    return frame_mog
+    # Step 3: Apply guided filter
+    # Convert grayscale MOG mask to RGB for guided filter
+    mog_mask_rgb = cv2.cvtColor(mog_mask, cv2.COLOR_GRAY2RGB)
+
+    # Apply guided filter: use original frame as guide to refine MOG mask
+    # This preserves edges from the original frame while smoothing the MOG mask
+    # Requires opencv-contrib-python for cv2.ximgproc.guidedFilter
+    guided_mog_rgb = cv2.ximgproc.guidedFilter(
+        guide=frame_blurred,
+        src=mog_mask_rgb,
+        radius=guided_radius,
+        eps=guided_eps,
+    )
+
+    # Convert back to grayscale
+    guided_mog = cv2.cvtColor(guided_mog_rgb, cv2.COLOR_BGR2GRAY)
+
+    # Step 4: Apply temporal smoothing
+    # Blend current frame with history to reduce temporal noise
+    if frame_count < 2 or frame_history is None:
+        # For first couple frames, no history available
+        processed_frame = guided_mog
+    else:
+        # Blend: temporal_weight * current + (1-temporal_weight) * history
+        # Default: 0.8 * current + 0.2 * history
+        processed_frame = (
+            temporal_weight * guided_mog.astype(np.float32)
+            + (1 - temporal_weight) * frame_history.astype(np.float32)
+        ).astype(np.uint8)
+
+    return processed_frame, processed_frame
 
 
 if __name__ == "__main__":
@@ -196,6 +278,9 @@ if __name__ == "__main__":
     gaussian_kernel = args["gaussian_kernel"]
     gaussian_sigma = args["gaussian_sigma"]
     mog_history = args["mog_history"]
+    guided_radius = args["guided_radius"]
+    guided_eps = args["guided_eps"]
+    temporal_weight = args["temporal_weight"]
     max_frames = args["max_frames"]
 
     # Get video metadata
@@ -211,6 +296,12 @@ if __name__ == "__main__":
     logger.info(
         f"Gaussian blur parameters: kernel={gaussian_kernel}x{gaussian_kernel}, sigma={gaussian_sigma}"
     )
+    logger.info(
+        f"Guided filter parameters: radius={guided_radius}, eps={guided_eps}"
+    )
+    logger.info(
+        f"Temporal smoothing: weight={temporal_weight} (current={temporal_weight*100}%, history={(1-temporal_weight)*100}%)"
+    )
 
     cap = cv2.VideoCapture(str(filepath_video))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -221,6 +312,7 @@ if __name__ == "__main__":
 
     processed_frames = []
     frame_count = 0
+    frame_history = None  # Track previous frame for temporal smoothing
 
     with tqdm(total=frames_to_process, desc="Processing frames", unit="frame") as pbar:
         while cap.isOpened() and frame_count < frames_to_process:
@@ -228,15 +320,23 @@ if __name__ == "__main__":
             if not ret or frame is None:
                 break
 
-            # Process the frame
-            frame_processed = process_frame(
+            # Process the frame with full pipeline
+            frame_processed, frame_for_history = process_frame(
                 frame=frame,
                 bg_subtractor=mog_subtractor,
                 gaussian_kernel=gaussian_kernel,
                 gaussian_sigma=gaussian_sigma,
+                guided_radius=guided_radius,
+                guided_eps=guided_eps,
+                frame_history=frame_history,
+                frame_count=frame_count,
+                temporal_weight=temporal_weight,
             )
 
-            # Convert grayscale MOG output to RGB for video saving
+            # Update history for next frame
+            frame_history = frame_for_history
+
+            # Convert grayscale output to RGB for video saving
             # (video codecs expect 3-channel input)
             frame_rgb = frame_utils.grayscale_to_rgb(frame_processed)
             processed_frames.append(frame_rgb)
