@@ -1,5 +1,8 @@
 # ARIS Sonar Processing Toolkit
 
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/earthtoolsmaker/aris)
+[![CI](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml/badge.svg)](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml)
+
 A Python toolkit for processing ARIS (Adaptive Resolution Imaging Sonar) files. Convert sonar data to video, apply motion detection preprocessing, and stabilize jittery footage.
 
 ## Demo
@@ -27,7 +30,6 @@ ARIS is a high-frequency imaging sonar system used for underwater imaging and ma
 
 ### Requirements
 
-- **Python**: 3.13+ (managed with `uv`)
 - **FFmpeg**: [Download here](https://www.ffmpeg.org/) - A complete, cross-platform solution to record, convert and stream audio and video
 
 ### Python Dependencies
