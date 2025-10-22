@@ -8,8 +8,8 @@ and triple-channel visualization for sonar video processing.
 import numpy as np
 
 from aris.preprocessing import (
-    create_visualization,
     create_gaussian_kernel,
+    create_visualization,
     smooth_frames_temporal,
 )
 
