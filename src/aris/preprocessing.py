@@ -12,9 +12,35 @@ These functions are used by:
 - stabilize_and_preprocess_sonar_video.py
 """
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 from numpy.typing import NDArray
+
+
+@dataclass
+class PreprocessingResult:
+    """
+    Result of preprocessing a single sonar frame.
+
+    This dataclass encapsulates the outputs of the preprocessing pipeline,
+    providing clear names for each component of the result.
+
+    Attributes:
+        blurred: Gaussian-blurred input frame (used for blue channel visualization)
+        edges: Edge intersection mask showing high-confidence fish boundaries
+               (used for green channel visualization)
+        motion: Refined motion detection result after guided filtering and temporal
+                smoothing (used for red channel visualization)
+        history: Copy of motion result to be used as history for the next frame's
+                 temporal smoothing
+    """
+
+    blurred: NDArray[np.uint8]
+    edges: NDArray[np.uint8]
+    motion: NDArray[np.uint8]
+    history: NDArray[np.uint8]
 
 
 def create_gaussian_kernel(window_size: int, sigma: float) -> NDArray[np.float32]:
@@ -85,14 +111,19 @@ def preprocess_frame(
     frame_history: NDArray[np.uint8] | None,
     frame_count: int,
     temporal_weight: float,
-) -> tuple[NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint8]]:
+    edge_canny_low: int = 200,
+    edge_canny_high: int = 255,
+    edge_dilation_size: int = 2,
+) -> PreprocessingResult:
     """
     Process a single frame with preprocessing pipeline.
 
     1. Apply Gaussian blur to reduce noise in sonar imagery
     2. Apply MOG2 background subtraction to isolate moving objects
-    3. Apply guided filter to refine MOG2 mask using frame edge information
-    4. Apply temporal smoothing to reduce frame-to-frame noise
+    3. Apply bidirectional guided filtering (frame-guided MOG and MOG-guided frame)
+    4. Apply edge detection to both guided outputs (Canny)
+    5. Compute edge intersection for high-confidence fish boundaries
+    6. Apply temporal smoothing to reduce frame-to-frame noise
 
     Args:
         frame: Input frame (grayscale)
@@ -104,12 +135,16 @@ def preprocess_frame(
         frame_history: Previous processed frame for temporal smoothing (None for first frame)
         frame_count: Current frame number (0-indexed)
         temporal_weight: Weight for current frame in temporal blending (0-1)
+        edge_canny_low: Canny edge detection lower threshold (default: 200)
+        edge_canny_high: Canny edge detection upper threshold (default: 255)
+        edge_dilation_size: Dilation size for edge tolerance in pixels (default: 2)
 
     Returns:
-        tuple: (blurred_frame, preprocessed_frame, preprocessed_frame_for_next_history)
-            - blurred_frame: Output of step 1 (for blue channel visualization)
-            - preprocessed_frame: Output of full pipeline (for red channel visualization)
-            - preprocessed_frame_for_next_history: Same as preprocessed_frame, for history tracking
+        PreprocessingResult: Dataclass containing:
+            - blurred: Gaussian-blurred input (for blue channel)
+            - edges: High-confidence fish edges (for green channel)
+            - motion: Refined motion detection (for red channel)
+            - history: Motion result for next frame's temporal smoothing
     """
     # Step 1: Apply Gaussian blur to reduce noise
     # This is critical for sonar imagery which has significant speckle noise
@@ -121,13 +156,14 @@ def preprocess_frame(
     # This isolates moving objects (fish) from the static background
     mog_mask = bg_subtractor.apply(frame_blurred)
 
-    # Step 3: Apply guided filter
-    # Convert grayscale MOG mask to RGB for guided filter
+    # Step 3: Apply bidirectional guided filtering
+    # Convert grayscale inputs to RGB for guided filter
     mog_mask_rgb = cv2.cvtColor(mog_mask, cv2.COLOR_GRAY2RGB)
+    frame_blurred_rgb = cv2.cvtColor(frame_blurred, cv2.COLOR_GRAY2RGB)
 
-    # Apply guided filter: use original frame as guide to refine MOG mask
+    # Direction 1: Frame-guided MOG (original direction)
+    # Use original frame as guide to refine MOG mask
     # This preserves edges from the original frame while smoothing the MOG mask
-    # Requires opencv-contrib-python for cv2.ximgproc.guidedFilter
     guided_mog_rgb = cv2.ximgproc.guidedFilter(
         guide=frame_blurred,
         src=mog_mask_rgb,
@@ -135,10 +171,38 @@ def preprocess_frame(
         eps=guided_eps,
     )
 
+    # Direction 2: MOG-guided frame (reverse direction)
+    # Use MOG mask as guide to extract frame structure in motion regions
+    # This highlights frame details where motion was detected
+    guided_img_rgb = cv2.ximgproc.guidedFilter(
+        guide=mog_mask,
+        src=frame_blurred_rgb,
+        radius=guided_radius,
+        eps=guided_eps,
+    )
+
     # Convert back to grayscale
     guided_mog = cv2.cvtColor(guided_mog_rgb, cv2.COLOR_BGR2GRAY)
+    guided_img = cv2.cvtColor(guided_img_rgb, cv2.COLOR_BGR2GRAY)
 
-    # Step 4: Apply temporal smoothing
+    # Step 4: Edge detection on both guided outputs
+    # Detect edges in the MOG-guided frame
+    edge_img = cv2.Canny(guided_img, edge_canny_low, edge_canny_high)
+
+    # Detect edges in the frame-guided MOG
+    edge_mog = cv2.Canny(guided_mog, edge_canny_low, edge_canny_high)
+
+    # Step 5: Compute edge intersection
+    # Dilate one edge map to allow slight misalignment tolerance
+    kernel_size = edge_dilation_size * 2 + 1  # Convert radius to kernel size
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    edge_mog_dilated = cv2.dilate(edge_mog, kernel, iterations=1)
+
+    # Intersection: only keep edges that appear in BOTH filtered versions
+    # This eliminates spurious edges and keeps only high-confidence fish boundaries
+    edge_intersection = cv2.bitwise_and(edge_img, edge_mog_dilated)
+
+    # Step 6: Apply temporal smoothing to motion channel
     # Blend current frame with history to reduce temporal noise
     if frame_count < 2 or frame_history is None:
         # For first couple frames, no history available
@@ -151,31 +215,43 @@ def preprocess_frame(
             + (1 - temporal_weight) * frame_history.astype(np.float32)
         ).astype(np.uint8)
 
-    return frame_blurred, processed_frame, processed_frame
+    return PreprocessingResult(
+        blurred=frame_blurred,
+        edges=edge_intersection,
+        motion=processed_frame,
+        history=processed_frame,
+    )
 
 
-def create_dual_channel_visualization(
-    frame_blurred: NDArray[np.uint8], frame_preprocessed: NDArray[np.uint8]
+def create_visualization(
+    frame_blurred: NDArray[np.uint8],
+    edge_intersection: NDArray[np.uint8],
+    frame_preprocessed: NDArray[np.uint8],
 ) -> NDArray[np.uint8]:
     """
-    Create RGB dual-channel visualization for sonar preprocessing.
+    Create RGB visualization for sonar preprocessing with edge detection.
 
-    Combines the Gaussian-blurred input and preprocessed output into a single
-    RGB frame for easy visual comparison.
+    Combines the Gaussian-blurred input, edge intersection, and preprocessed output
+    into a single RGB frame for comprehensive visual analysis.
 
     Channel assignment:
     - Blue channel: Gaussian-blurred input (shows sonar structure after noise reduction)
-    - Green channel: Empty (zeros/black)
-    - Red channel: Preprocessed output (shows detected motion)
+    - Green channel: Edge intersection (high-confidence fish boundaries from bidirectional filtering)
+    - Red channel: Preprocessed output (shows detected motion after guided filter + temporal smoothing)
 
-    Visual interpretation:
-    - Pure blue regions: Static sonar background
-    - Pure red regions: Detected moving objects (e.g., fish)
-    - Magenta/purple regions: Motion overlapping with sonar structures
-    - Black regions: No signal in either channel
+    Visual interpretation (colors are additive):
+    - Pure blue: Static sonar background structure
+    - Pure green: High-confidence object edges (fish boundaries detected by both filters)
+    - Pure red: Detected moving regions (motion blobs)
+    - Cyan (blue + green): Static edges in the scene
+    - Yellow (green + red): Moving objects with clear boundaries → FISH (highest confidence)
+    - Magenta (blue + red): Motion over background structure
+    - White (all channels): Bright moving object with edges over structure
+    - Black: No signal in any channel
 
     Args:
         frame_blurred: Gaussian-blurred input frame (grayscale)
+        edge_intersection: Edge intersection mask (grayscale, binary edges)
         frame_preprocessed: Preprocessed output frame (grayscale)
 
     Returns:
@@ -184,7 +260,9 @@ def create_dual_channel_visualization(
     return np.dstack(
         [
             frame_blurred,  # Blue channel
-            np.zeros_like(frame_blurred),  # Green channel (empty)
+            edge_intersection,  # Green channel (fish edges)
             frame_preprocessed,  # Red channel
         ]
     )
+
+

@@ -12,21 +12,24 @@ Processing Pipeline:
 3. Apply preprocessing pipeline on stabilized frame:
    - Gaussian blur
    - MOG2 background subtraction
-   - Guided filter
+   - Bidirectional guided filtering
+   - Edge detection and intersection
    - Preprocessing temporal smoothing
-4. Create dual-channel visualization (blue=input, red=motion)
+4. Create triple-channel visualization (blue=input, green=fish edges, red=motion)
 5. Write output frame immediately (memory-efficient)
 
 Output Format:
 - Blue channel: Gaussian-blurred stabilized frames
-- Green channel: Empty (black)
+- Green channel: Edge intersection (high-confidence fish boundaries)
 - Red channel: Preprocessed frames showing detected motion
 
 Visual interpretation:
 - Pure blue: Static sonar background
-- Pure red: Detected moving objects (fish)
-- Magenta/purple: Motion overlapping with sonar structures
-- Black: No signal
+- Pure green: High-confidence object edges (fish boundaries)
+- Pure red: Detected moving regions
+- Yellow (green + red): Moving objects with clear boundaries → FISH (highest confidence)
+- Cyan (blue + green): Static edges in the scene
+- Magenta (blue + red): Motion over background structure
 
 Usage:
     # Standard usage with default parameters
@@ -158,6 +161,24 @@ def make_cli_parser() -> argparse.ArgumentParser:
         default=0.8,
         help="Preprocessing temporal smoothing weight (default: 0.8)",
     )
+    parser.add_argument(
+        "--edge-canny-low",
+        type=int,
+        default=200,
+        help="Canny edge detection lower threshold (default: 200)",
+    )
+    parser.add_argument(
+        "--edge-canny-high",
+        type=int,
+        default=255,
+        help="Canny edge detection upper threshold (default: 255)",
+    )
+    parser.add_argument(
+        "--edge-dilation-size",
+        type=int,
+        default=2,
+        help="Edge dilation size in pixels for tolerance (default: 2)",
+    )
 
     # Common parameters
     parser.add_argument(
@@ -272,6 +293,9 @@ def main():
     guided_radius = args["guided_radius"]
     guided_eps = args["guided_eps"]
     temporal_weight = args["temporal_weight"]
+    edge_canny_low = args["edge_canny_low"]
+    edge_canny_high = args["edge_canny_high"]
+    edge_dilation_size = args["edge_dilation_size"]
     max_frames = args["max_frames"]
 
     # Get video metadata
@@ -393,11 +417,7 @@ def main():
             stabilized_gray = stabilized_frame[:, :, 0]
 
             # Apply preprocessing pipeline
-            (
-                frame_blurred,
-                frame_preprocessed,
-                preprocessing_history,
-            ) = aris.preprocessing.preprocess_frame(
+            result = aris.preprocessing.preprocess_frame(
                 frame=stabilized_gray,
                 bg_subtractor=mog_subtractor,
                 gaussian_kernel=gaussian_kernel,
@@ -407,11 +427,17 @@ def main():
                 frame_history=preprocessing_history,
                 frame_count=frames_written,
                 temporal_weight=temporal_weight,
+                edge_canny_low=edge_canny_low,
+                edge_canny_high=edge_canny_high,
+                edge_dilation_size=edge_dilation_size,
             )
 
-            # Create dual-channel visualization
-            output_frame = aris.preprocessing.create_dual_channel_visualization(
-                frame_blurred, frame_preprocessed
+            # Update history for next frame
+            preprocessing_history = result.history
+
+            # Create triple-channel visualization
+            output_frame = aris.preprocessing.create_visualization(
+                result.blurred, result.edges, result.motion
             )
 
             # Write frame immediately (memory-efficient!)
@@ -449,11 +475,7 @@ def main():
             # Extract blue channel and preprocess
             stabilized_gray = stabilized_frame[:, :, 0]
 
-            (
-                frame_blurred,
-                frame_preprocessed,
-                preprocessing_history,
-            ) = aris.preprocessing.preprocess_frame(
+            result = aris.preprocessing.preprocess_frame(
                 frame=stabilized_gray,
                 bg_subtractor=mog_subtractor,
                 gaussian_kernel=gaussian_kernel,
@@ -463,11 +485,17 @@ def main():
                 frame_history=preprocessing_history,
                 frame_count=frames_written,
                 temporal_weight=temporal_weight,
+                edge_canny_low=edge_canny_low,
+                edge_canny_high=edge_canny_high,
+                edge_dilation_size=edge_dilation_size,
             )
 
+            # Update history for next frame
+            preprocessing_history = result.history
+
             # Create visualization and write
-            output_frame = aris.preprocessing.create_dual_channel_visualization(
-                frame_blurred, frame_preprocessed
+            output_frame = aris.preprocessing.create_visualization(
+                result.blurred, result.edges, result.motion
             )
             video_writer.write(output_frame)
             frames_written += 1

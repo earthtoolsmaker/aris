@@ -5,19 +5,23 @@ guided filtering, and temporal smoothing.
 This script applies a preprocessing pipeline to sonar videos:
 1. Gaussian blur to reduce noise in sonar imagery
 2. MOG2 (Mixture of Gaussians) background subtraction to isolate moving objects (fish)
-3. Guided filter to refine MOG2 mask using original frame edge information
-4. Temporal smoothing to reduce frame-to-frame noise (0.8*current + 0.2*history)
+3. Bidirectional guided filtering (frame-guided MOG and MOG-guided frame)
+4. Edge detection with Canny on both guided outputs
+5. Edge intersection to identify high-confidence fish boundaries
+6. Temporal smoothing to reduce frame-to-frame noise (0.8*current + 0.2*history)
 
-The output is an RGB video with dual-channel visualization:
+The output is an RGB video with triple-channel visualization:
 - Blue channel: Gaussian-blurred sonar frames (shows input structure after noise reduction)
-- Green channel: Empty (black)
+- Green channel: Edge intersection (high-confidence fish boundaries)
 - Red channel: Fully preprocessed frames (shows detected motion)
 
-This visualization makes it easy to compare input and output:
-- Pure blue regions: Static sonar background
-- Pure red regions: Detected moving objects (fish)
-- Magenta/purple regions: Motion overlapping with sonar structures
-- Black regions: No signal in either channel
+This visualization makes it easy to identify fish:
+- Pure blue: Static sonar background
+- Pure green: High-confidence object edges (fish boundaries)
+- Pure red: Detected moving regions
+- Yellow (green + red): Moving objects with clear boundaries → FISH (highest confidence)
+- Cyan (blue + green): Static edges in the scene
+- Magenta (blue + red): Motion over background structure
 
 Usage:
     # Process a single video with default parameters
@@ -119,6 +123,24 @@ def make_cli_parser() -> argparse.ArgumentParser:
         help="Weight for current frame in temporal smoothing (default: 0.8, meaning 80%% current + 20%% history)",
     )
     parser.add_argument(
+        "--edge-canny-low",
+        type=int,
+        default=200,
+        help="Canny edge detection lower threshold (default: 200)",
+    )
+    parser.add_argument(
+        "--edge-canny-high",
+        type=int,
+        default=255,
+        help="Canny edge detection upper threshold (default: 255)",
+    )
+    parser.add_argument(
+        "--edge-dilation-size",
+        type=int,
+        default=2,
+        help="Edge dilation size in pixels for tolerance (default: 2)",
+    )
+    parser.add_argument(
         "--max-frames",
         nargs="?",
         const=None,
@@ -209,6 +231,9 @@ def main():
     guided_radius = args["guided_radius"]
     guided_eps = args["guided_eps"]
     temporal_weight = args["temporal_weight"]
+    edge_canny_low = args["edge_canny_low"]
+    edge_canny_high = args["edge_canny_high"]
+    edge_dilation_size = args["edge_dilation_size"]
     max_frames = args["max_frames"]
 
     # Get video metadata
@@ -229,6 +254,9 @@ def main():
     logger.info(f"Guided filter parameters: radius={guided_radius}, eps={guided_eps}")
     logger.info(
         f"Temporal smoothing: weight={temporal_weight} (current={temporal_weight * 100}%, history={(1 - temporal_weight) * 100}%)"
+    )
+    logger.info(
+        f"Edge detection: Canny thresholds=({edge_canny_low}, {edge_canny_high}), dilation={edge_dilation_size}px"
     )
 
     cap = cv2.VideoCapture(str(filepath_video))
@@ -253,26 +281,27 @@ def main():
             frame_gray = frame_rgb_input[:, :, 0]
 
             # Process the frame with full pipeline
-            frame_blurred, frame_preprocessed, frame_for_history = (
-                aris.preprocessing.preprocess_frame(
-                    frame=frame_gray,
-                    bg_subtractor=mog_subtractor,
-                    gaussian_kernel=gaussian_kernel,
-                    gaussian_sigma=gaussian_sigma,
-                    guided_radius=guided_radius,
-                    guided_eps=guided_eps,
-                    frame_history=frame_history,
-                    frame_count=frame_count,
-                    temporal_weight=temporal_weight,
-                )
+            result = aris.preprocessing.preprocess_frame(
+                frame=frame_gray,
+                bg_subtractor=mog_subtractor,
+                gaussian_kernel=gaussian_kernel,
+                gaussian_sigma=gaussian_sigma,
+                guided_radius=guided_radius,
+                guided_eps=guided_eps,
+                frame_history=frame_history,
+                frame_count=frame_count,
+                temporal_weight=temporal_weight,
+                edge_canny_low=edge_canny_low,
+                edge_canny_high=edge_canny_high,
+                edge_dilation_size=edge_dilation_size,
             )
 
             # Update history for next frame
-            frame_history = frame_for_history
+            frame_history = result.history
 
-            # Create dual-channel RGB visualization
-            visualization_frame = aris.preprocessing.create_dual_channel_visualization(
-                frame_blurred, frame_preprocessed
+            # Create triple-channel RGB visualization
+            visualization_frame = aris.preprocessing.create_visualization(
+                result.blurred, result.edges, result.motion
             )
             processed_frames.append(visualization_frame)
 
