@@ -67,10 +67,10 @@ from aris.frame import (
 
 # Preprocessing functions
 from aris.preprocessing import (
-    create_visualization,
-    create_gaussian_kernel,
-    preprocess_frame,
     PreprocessingResult,
+    create_gaussian_kernel,
+    create_visualization,
+    preprocess_frame,
     smooth_frames_temporal,
 )
 from aris.pyARIS.pyARIS import ARIS_File as ARISFile

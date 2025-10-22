@@ -264,5 +264,3 @@ def create_visualization(
             frame_preprocessed,  # Red channel
         ]
     )
-
-
