@@ -33,6 +33,9 @@ def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
 
     assert filepath_input.exists(), "filepath_input does not exist!"
 
+    # Create parent directories if they don't exist
+    filepath_output.parent.mkdir(parents=True, exist_ok=True)
+
     logging.info(f"Encoding video from {filepath_input} to {filepath_output}")
 
     try:

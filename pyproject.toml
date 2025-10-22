@@ -42,3 +42,6 @@ addopts = [
     "--cov-report=html",
     "--ignore=src/aris/pyARIS/",
 ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
