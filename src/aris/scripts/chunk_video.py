@@ -159,7 +159,8 @@ def process_video(
             )
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the chunk_video CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -187,3 +188,7 @@ if __name__ == "__main__":
                 dir_save=dir_save,
                 logger=logger,
             )
+
+
+if __name__ == "__main__":
+    main()

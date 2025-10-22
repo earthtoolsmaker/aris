@@ -19,34 +19,98 @@ Primary Use Cases:
 
 Example:
     # Basic ARIS to video conversion
-    from aris.pyARIS import pyARIS
-    import aris.frame as aris_frame
+    from aris import DataImport, extract_frames_as_numpy_arrays, aris_frames_to_mp4v_video
+    from pathlib import Path
 
-    aris_data, first_frame = pyARIS.DataImport("sonar.aris")
-    frames = aris_frame.extract_frames_as_numpy_arrays(
+    # Load ARIS file and extract frames
+    aris_data, first_frame = DataImport("sonar.aris")
+    frames = extract_frames_as_numpy_arrays(
         aris_data, start_frame=0, end_frame=100
     )
-    aris_frame.aris_frames_to_mp4v_video(
+    aris_frames_to_mp4v_video(
         frames, filepath_save=Path("output.mp4"), fps=24
     )
+
+    # Video processing utilities
+    from aris import get_average_frame, encode_video_with_h264_codec
+
+    avg_frame = get_average_frame(Path("input.mp4"))
+    encode_video_with_h264_codec(Path("input.mp4"), Path("output.mp4"))
 
 Target Users:
     - Oceanographers analyzing underwater imagery
     - Marine researchers studying fish populations
     - Robotics engineers working with sonar systems
 
-For command-line usage, see the scripts in the scripts/ directory.
+For command-line usage, install the package and use CLI commands:
+    - aris-convert: Convert ARIS files to MP4
+    - aris-chunk: Split videos into chunks
+    - aris-extract-frame: Extract average frame
+    - aris-encode: Re-encode videos with specific codec
+    - aris-stabilize: Apply temporal stabilization
+    - aris-preprocess: Apply preprocessing pipeline
+    - aris-stabilize-preprocess: Combined stabilization and preprocessing
 """
 
+__version__ = "0.1.0"
 
-def hello() -> str:
-    """
-    Return a greeting message from the ARIS package.
+# Core ARIS file format handling
+# Frame extraction and video generation
+from aris.frame import (
+    aris_frames_to_mp4v_video,
+    extract_frame_as_numpy_array,
+    extract_frames_as_numpy_arrays,
+    get_recorded_at_datetime,
+    grayscale_to_rgb,
+    is_grayscale,
+)
 
-    Returns:
-        str: A simple greeting string.
+# Preprocessing functions
+from aris.preprocessing import (
+    create_dual_channel_visualization,
+    create_gaussian_kernel,
+    preprocess_frame,
+    smooth_frames_temporal,
+)
+from aris.pyARIS.pyARIS import ARIS_File as ARISFile
+from aris.pyARIS.pyARIS import ARIS_Frame as ARISFrame
+from aris.pyARIS.pyARIS import DataImport, FrameRead
 
-    Note:
-        This is a placeholder function for package testing.
-    """
-    return "Hello from aris!"
+# Video utilities
+from aris.video.utils import (
+    encode_video_with_h264_codec,
+    get_all_frames,
+    get_average_frame,
+    get_fps,
+    get_video_duration,
+    save_frames_to_video,
+)
+
+__all__ = [
+    # Version
+    "__version__",
+    # Core ARIS classes and functions
+    "ARISFile",
+    "ARISFrame",
+    "DataImport",
+    "FrameRead",
+    # Frame processing
+    "aris_frames_to_mp4v_video",
+    "extract_frame_as_numpy_array",
+    "extract_frames_as_numpy_arrays",
+    "get_recorded_at_datetime",
+    "grayscale_to_rgb",
+    "is_grayscale",
+    # Video utilities
+    "encode_video_with_h264_codec",
+    "get_all_frames",
+    "get_average_frame",
+    "get_fps",
+    "get_video_duration",
+    "save_frames_to_video",
+    # Preprocessing
+    "create_dual_channel_visualization",
+    "create_gaussian_kernel",
+    "preprocess_frame",
+    "smooth_frames_temporal",
+]

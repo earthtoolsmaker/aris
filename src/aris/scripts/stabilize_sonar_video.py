@@ -140,7 +140,8 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the stabilize_sonar_video CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -228,7 +229,6 @@ if __name__ == "__main__":
             # For a full window, output frame is at position 'center'
             # For incomplete windows at start, output frame is at position 0
             buffer_list = list(frame_buffer)
-            output_position = min(frames_written, center)
 
             # Determine which frames to use for smoothing
             # At start: use fewer frames (incomplete window on left)
@@ -315,3 +315,7 @@ if __name__ == "__main__":
     logger.info(f"Successfully stabilized and wrote {frames_written} frames")
     logger.info(f"Output saved to: {filepath_save}")
     logger.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()

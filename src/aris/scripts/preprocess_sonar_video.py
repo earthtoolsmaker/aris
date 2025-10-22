@@ -187,7 +187,8 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the preprocess_sonar_video CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -292,3 +293,7 @@ if __name__ == "__main__":
     )
 
     logger.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()

@@ -190,7 +190,7 @@ def process_aris_filepath(
     logger.info("ARIS data details:")
     aris_data.info()
     filepath_video_save = get_filepath_video_save(
-        args_cli=args,
+        args_cli={"start_frame": start_frame, "end_frame": end_frame},
         filepath_aris=filepath_aris,
         aris_data=aris_data,
         dir_save=dir_save,
@@ -232,7 +232,8 @@ def process_aris_filepath(
         logger.info(f"Done with ARIS filepath {filepath_aris}")
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the convert_aris_to_video CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -273,3 +274,7 @@ if __name__ == "__main__":
                 logger.error(f"Error processing {fp_aris}: {e}")
 
         logger.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()
