@@ -4,7 +4,7 @@ A Python toolkit for processing ARIS (Adaptive Resolution Imaging Sonar) files. 
 
 ## Demo
 
-https://github.com/earthtoolsmaker/aris/assets/docs/assets/demo.mp4
+[Watch demo video](docs/assets/demo.mp4)
 
 ## What is ARIS?
 
