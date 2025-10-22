@@ -49,6 +49,9 @@ markers = [
 [tool.ruff]
 line-length = 88
 target-version = "py313"
+exclude = [
+    "src/aris/pyARIS/",
+]
 
 [tool.ruff.lint]
 select = [

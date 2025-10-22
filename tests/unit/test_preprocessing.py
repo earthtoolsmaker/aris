@@ -5,14 +5,12 @@ Tests preprocessing functions including Gaussian kernel creation, temporal smoot
 and dual-channel visualization for sonar video processing.
 """
 
-import pytest
 import numpy as np
-from numpy.typing import NDArray
 
 from aris.preprocessing import (
+    create_dual_channel_visualization,
     create_gaussian_kernel,
     smooth_frames_temporal,
-    create_dual_channel_visualization,
 )
 
 

@@ -51,10 +51,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from numpy.typing import NDArray
 from tqdm import tqdm
 
-import aris.frame as frame_utils
 import aris.preprocessing
 import aris.video.utils as video_utils
 
@@ -142,8 +140,6 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-
-
 if __name__ == "__main__":
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
@@ -216,7 +212,10 @@ if __name__ == "__main__":
     with tqdm(total=frames_to_process, desc="Stabilizing frames", unit="frame") as pbar:
         # Phase 1: Fill the buffer to have "future" frames (need center frames ahead)
         # Read center frames ahead to fill the right side of the window
-        while len(frame_buffer) < min(window_size, center + 1) and frame_idx < frames_to_process - 1:
+        while (
+            len(frame_buffer) < min(window_size, center + 1)
+            and frame_idx < frames_to_process - 1
+        ):
             ret, frame = cap.read()
             if not ret or frame is None:
                 break
@@ -236,13 +235,17 @@ if __name__ == "__main__":
             # At end: use fewer frames (incomplete window on right)
             if frames_written < center:
                 # Near start: use frames from position 0 to (frames_written + center + 1)
-                window_frames = buffer_list[: min(len(buffer_list), frames_written + center + 1)]
+                window_frames = buffer_list[
+                    : min(len(buffer_list), frames_written + center + 1)
+                ]
                 # Use weights starting from the appropriate position
                 missing_before = center - frames_written
-                active_weights = gaussian_weights[missing_before : missing_before + len(window_frames)]
+                active_weights = gaussian_weights[
+                    missing_before : missing_before + len(window_frames)
+                ]
             elif frame_idx >= frames_to_process - 1 and len(buffer_list) < window_size:
                 # Near end: incomplete window on right
-                window_frames = buffer_list[max(0, len(buffer_list) - window_size):]
+                window_frames = buffer_list[max(0, len(buffer_list) - window_size) :]
                 # Calculate how many frames we're missing on the right
                 frames_in_window = len(window_frames)
                 active_weights = gaussian_weights[:frames_in_window]

@@ -175,7 +175,7 @@ def get_video_duration(filepath_video: Path) -> float | None:
         probe = ffmpeg.probe(str(filepath_video))
         duration = float(probe["format"]["duration"])
         return duration
-    except Exception as e:
+    except Exception:
         logging.error(f"Could not get video duration for {filepath_video}")
         return None
 

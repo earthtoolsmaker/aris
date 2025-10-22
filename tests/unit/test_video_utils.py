@@ -5,18 +5,17 @@ Tests video processing utilities including frame extraction, averaging,
 metadata reading, and video encoding operations.
 """
 
-import pytest
-import numpy as np
-from pathlib import Path
 import cv2
+import numpy as np
+import pytest
 
 from aris.video.utils import (
-    get_average_frame,
+    encode_video_with_h264_codec,
     get_all_frames,
+    get_average_frame,
     get_fps,
     get_video_duration,
     save_frames_to_video,
-    encode_video_with_h264_codec,
 )
 
 
@@ -131,7 +130,7 @@ class TestGetFps:
     def test_nonexistent_file_raises_exception(self, tmp_path):
         """Test that missing file raises an exception."""
         fake_path = tmp_path / "nonexistent.mp4"
-        with pytest.raises(Exception):
+        with pytest.raises((Exception, cv2.error)):
             get_fps(fake_path)
 
 
@@ -197,8 +196,7 @@ class TestSaveFramesToVideo:
     def test_large_frame_count(self, tmp_path):
         """Test handling of larger number of frames."""
         frames = [
-            np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8)
-            for _ in range(100)
+            np.random.randint(0, 256, (50, 50, 3), dtype=np.uint8) for _ in range(100)
         ]
         output_path = tmp_path / "large_video.mp4"
         save_frames_to_video(frames, output_path, fps=30)

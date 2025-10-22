@@ -302,7 +302,7 @@ if __name__ == "__main__":
     logger.info(f"Guided filter: radius={guided_radius}, eps={guided_eps}")
     logger.info(
         f"Preprocessing temporal smoothing: weight={temporal_weight} "
-        f"(current={temporal_weight*100}%, history={(1-temporal_weight)*100}%)"
+        f"(current={temporal_weight * 100}%, history={(1 - temporal_weight) * 100}%)"
     )
 
     # Open video

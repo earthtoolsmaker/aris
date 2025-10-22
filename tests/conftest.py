@@ -5,11 +5,11 @@ This module provides reusable fixtures for testing ARIS sonar processing toolkit
 including synthetic frames, mock ARIS objects, and test video files.
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
+
 import cv2
-import tempfile
+import numpy as np
+import pytest
 
 
 @pytest.fixture
@@ -42,10 +42,7 @@ def sample_frames_list():
     Returns:
         list[NDArray[np.uint8]]: List of 5 random RGB frames.
     """
-    return [
-        np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
-        for _ in range(5)
-    ]
+    return [np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8) for _ in range(5)]
 
 
 @pytest.fixture
@@ -89,7 +86,7 @@ def sample_video_file_30fps(tmp_path):
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(video_path), fourcc, 30, (100, 100))
 
-    for i in range(30):
+    for _i in range(30):
         frame = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
         writer.write(frame)
 
@@ -108,6 +105,7 @@ def mock_aris_frame():
     Returns:
         MockARISFrame: Mock object with sonartimestamp and remap attributes.
     """
+
     class MockARISFrame:
         sonartimestamp = 1609459200000000  # 2021-01-01 00:00:00 UTC in microseconds
         remap = np.random.randint(0, 256, (100, 100), dtype=np.uint8)
@@ -125,6 +123,7 @@ def known_timestamp_frame():
     Returns:
         MockARISFrame: Mock frame with specific timestamp.
     """
+
     class MockARISFrame:
         # 2024-06-15 14:30:45 UTC = 1718461845 seconds = 1718461845000000 microseconds
         sonartimestamp = 1718461845000000

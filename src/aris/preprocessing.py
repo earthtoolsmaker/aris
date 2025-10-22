@@ -68,7 +68,7 @@ def smooth_frames_temporal(
     # Convert to float for accurate weighted averaging
     smoothed = np.zeros_like(frames[0], dtype=np.float32)
 
-    for frame, weight in zip(frames, weights):
+    for frame, weight in zip(frames, weights, strict=True):
         smoothed += weight * frame.astype(np.float32)
 
     # Convert back to uint8

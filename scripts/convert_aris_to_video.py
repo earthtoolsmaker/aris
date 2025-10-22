@@ -29,7 +29,6 @@ import logging
 import random
 from logging import Logger
 from pathlib import Path
-from typing import Tuple
 
 import aris.frame as aris_frame
 from aris.pyARIS import pyARIS
@@ -104,7 +103,7 @@ def sanitize_frame_boundaries(
     start_frame: int | None,
     end_frame: int | None,
     aris_data,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Sanitize the start_frame and end_frame values to ensure they are within
     the valid range of frame indices for the given ARIS data. This helps to

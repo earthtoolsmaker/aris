@@ -8,17 +8,16 @@ Note: Tests for extract_frame_as_numpy_array() and extract_frames_as_numpy_array
 are excluded as they depend on pyARIS functionality.
 """
 
-import pytest
-import numpy as np
 import datetime
+
+import numpy as np
 import pytz
-from pathlib import Path
 
 from aris.frame import (
+    aris_frames_to_mp4v_video,
+    get_recorded_at_datetime,
     grayscale_to_rgb,
     is_grayscale,
-    get_recorded_at_datetime,
-    aris_frames_to_mp4v_video,
 )
 
 
@@ -112,6 +111,7 @@ class TestGetRecordedAtDatetime:
 
     def test_epoch_timestamp(self):
         """Test conversion of Unix epoch (1970-01-01 00:00:00 UTC)."""
+
         class EpochFrame:
             sonartimestamp = 0  # Unix epoch
 
@@ -140,8 +140,7 @@ class TestArisFramesToMp4vVideo:
     def test_handles_grayscale_frames(self, tmp_path):
         """Test that grayscale frames are converted and encoded correctly."""
         grayscale_frames = [
-            np.random.randint(0, 256, (100, 100), dtype=np.uint8)
-            for _ in range(3)
+            np.random.randint(0, 256, (100, 100), dtype=np.uint8) for _ in range(3)
         ]
         output_path = tmp_path / "grayscale_video.mp4"
         aris_frames_to_mp4v_video(grayscale_frames, output_path, fps=24)
