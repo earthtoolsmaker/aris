@@ -17,6 +17,7 @@ import logging
 import random
 from logging import Logger
 from pathlib import Path
+
 from tqdm import tqdm
 
 import aris.video.utils as video_utils

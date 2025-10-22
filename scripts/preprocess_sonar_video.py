@@ -2,8 +2,7 @@
 CLI script to preprocess sonar videos with Gaussian blur, MOG2 background subtraction,
 guided filtering, and temporal smoothing.
 
-This script applies a preprocessing pipeline to sonar videos based on the approach
-from Salmon Computer Vision (https://github.com/Salmon-Computer-Vision/salmon-vision-sonar):
+This script applies a preprocessing pipeline to sonar videos:
 1. Gaussian blur to reduce noise in sonar imagery
 2. MOG2 (Mixture of Gaussians) background subtraction to isolate moving objects (fish)
 3. Guided filter to refine MOG2 mask using original frame edge information
@@ -22,22 +21,22 @@ This visualization makes it easy to compare input and output:
 
 Usage:
     # Process a single video with default parameters
-    uv run python ./scripts/preprocess_sonar_video.py \\
-        --filepath-video ./data/video.mp4 \\
+    uv run python ./scripts/preprocess_sonar_video.py \
+        --filepath-video ./data/video.mp4 \
         --filepath-save ./data/preprocessed.mp4
 
     # Process with custom parameters
-    uv run python ./scripts/preprocess_sonar_video.py \\
-        --filepath-video ./data/video.mp4 \\
-        --filepath-save ./data/preprocessed.mp4 \\
-        --gaussian-kernel 5 \\
-        --gaussian-sigma 1.4 \\
+    uv run python ./scripts/preprocess_sonar_video.py \
+        --filepath-video ./data/video.mp4 \
+        --filepath-save ./data/preprocessed.mp4 \
+        --gaussian-kernel 5 \
+        --gaussian-sigma 1.4 \
         --mog-history 100
 
     # Process only first 1000 frames
-    uv run python ./scripts/preprocess_sonar_video.py \\
-        --filepath-video ./data/video.mp4 \\
-        --filepath-save ./data/preprocessed.mp4 \\
+    uv run python ./scripts/preprocess_sonar_video.py \
+        --filepath-video ./data/video.mp4 \
+        --filepath-save ./data/preprocessed.mp4 \
         --max-frames 1000
 
 Parameters:
@@ -55,11 +54,8 @@ import logging
 from pathlib import Path
 
 import cv2
-import numpy as np
-from numpy.typing import NDArray
 from tqdm import tqdm
 
-import aris.frame as frame_utils
 import aris.preprocessing
 import aris.video.utils as video_utils
 
@@ -96,7 +92,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--gaussian-sigma",
         type=float,
         default=1.4,
-        help="Gaussian blur sigma value (default: 1.4, same as Salmon Vision)",
+        help="Gaussian blur sigma value (default: 1.4)",
     )
     parser.add_argument(
         "--mog-history",
@@ -108,13 +104,13 @@ def make_cli_parser() -> argparse.ArgumentParser:
         "--guided-radius",
         type=int,
         default=10,
-        help="Guided filter radius (default: 10, same as Salmon Vision)",
+        help="Guided filter radius (default: 10)",
     )
     parser.add_argument(
         "--guided-eps",
         type=float,
         default=0.01,
-        help="Guided filter epsilon/regularization (default: 0.01, same as Salmon Vision)",
+        help="Guided filter epsilon/regularization (default: 0.01)",
     )
     parser.add_argument(
         "--temporal-weight",
@@ -191,8 +187,6 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-
-
 if __name__ == "__main__":
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
@@ -222,18 +216,18 @@ if __name__ == "__main__":
 
     # Initialize MOG2 background subtractor
     logger.info(f"Initializing MOG2 background subtractor with history={mog_history}")
-    mog_subtractor = cv2.createBackgroundSubtractorMOG2(history=mog_history, detectShadows=False)
+    mog_subtractor = cv2.createBackgroundSubtractorMOG2(
+        history=mog_history, detectShadows=False
+    )
 
     # Process video frames
     logger.info(f"Processing video: {filepath_video}")
     logger.info(
         f"Gaussian blur parameters: kernel={gaussian_kernel}x{gaussian_kernel}, sigma={gaussian_sigma}"
     )
+    logger.info(f"Guided filter parameters: radius={guided_radius}, eps={guided_eps}")
     logger.info(
-        f"Guided filter parameters: radius={guided_radius}, eps={guided_eps}"
-    )
-    logger.info(
-        f"Temporal smoothing: weight={temporal_weight} (current={temporal_weight*100}%, history={(1-temporal_weight)*100}%)"
+        f"Temporal smoothing: weight={temporal_weight} (current={temporal_weight * 100}%, history={(1 - temporal_weight) * 100}%)"
     )
 
     cap = cv2.VideoCapture(str(filepath_video))
@@ -258,16 +252,18 @@ if __name__ == "__main__":
             frame_gray = frame_rgb_input[:, :, 0]
 
             # Process the frame with full pipeline
-            frame_blurred, frame_preprocessed, frame_for_history = aris.preprocessing.preprocess_frame(
-                frame=frame_gray,
-                bg_subtractor=mog_subtractor,
-                gaussian_kernel=gaussian_kernel,
-                gaussian_sigma=gaussian_sigma,
-                guided_radius=guided_radius,
-                guided_eps=guided_eps,
-                frame_history=frame_history,
-                frame_count=frame_count,
-                temporal_weight=temporal_weight,
+            frame_blurred, frame_preprocessed, frame_for_history = (
+                aris.preprocessing.preprocess_frame(
+                    frame=frame_gray,
+                    bg_subtractor=mog_subtractor,
+                    gaussian_kernel=gaussian_kernel,
+                    gaussian_sigma=gaussian_sigma,
+                    guided_radius=guided_radius,
+                    guided_eps=guided_eps,
+                    frame_history=frame_history,
+                    frame_count=frame_count,
+                    temporal_weight=temporal_weight,
+                )
             )
 
             # Update history for next frame

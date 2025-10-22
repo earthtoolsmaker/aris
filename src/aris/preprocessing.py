@@ -68,7 +68,7 @@ def smooth_frames_temporal(
     # Convert to float for accurate weighted averaging
     smoothed = np.zeros_like(frames[0], dtype=np.float32)
 
-    for frame, weight in zip(frames, weights):
+    for frame, weight in zip(frames, weights, strict=True):
         smoothed += weight * frame.astype(np.float32)
 
     # Convert back to uint8
@@ -87,9 +87,8 @@ def preprocess_frame(
     temporal_weight: float,
 ) -> tuple[NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint8]]:
     """
-    Process a single frame with full Salmon Computer Vision preprocessing pipeline.
+    Process a single frame with preprocessing pipeline.
 
-    This implements steps 1-4 from the Salmon Computer Vision pipeline:
     1. Apply Gaussian blur to reduce noise in sonar imagery
     2. Apply MOG2 background subtraction to isolate moving objects
     3. Apply guided filter to refine MOG2 mask using frame edge information
@@ -182,8 +181,10 @@ def create_dual_channel_visualization(
     Returns:
         NDArray[np.uint8]: RGB frame with shape (H, W, 3)
     """
-    return np.dstack([
-        frame_blurred,  # Blue channel
-        np.zeros_like(frame_blurred),  # Green channel (empty)
-        frame_preprocessed,  # Red channel
-    ])
+    return np.dstack(
+        [
+            frame_blurred,  # Blue channel
+            np.zeros_like(frame_blurred),  # Green channel (empty)
+            frame_preprocessed,  # Red channel
+        ]
+    )
