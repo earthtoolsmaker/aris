@@ -2,14 +2,14 @@
 Unit tests for aris.preprocessing module.
 
 Tests preprocessing functions including Gaussian kernel creation, temporal smoothing,
-and dual-channel visualization for sonar video processing.
+and triple-channel visualization for sonar video processing.
 """
 
 import numpy as np
 
 from aris.preprocessing import (
-    create_dual_channel_visualization,
     create_gaussian_kernel,
+    create_visualization,
     smooth_frames_temporal,
 )
 
@@ -167,77 +167,95 @@ class TestSmoothFramesTemporal:
         assert np.array_equal(result, np.full((10, 10), 255, dtype=np.uint8))
 
 
-class TestCreateDualChannelVisualization:
-    """Tests for create_dual_channel_visualization() function."""
+class TestCreateVisualization:
+    """Tests for create_visualization() function."""
 
     def test_returns_numpy_array(self):
         """Test that function returns a NumPy array."""
         blurred = np.zeros((100, 100), dtype=np.uint8)
+        edges = np.zeros((100, 100), dtype=np.uint8)
         preprocessed = np.zeros((100, 100), dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert isinstance(result, np.ndarray)
 
     def test_correct_shape(self):
         """Test that output is RGB with shape (H, W, 3)."""
         blurred = np.zeros((50, 80), dtype=np.uint8)
+        edges = np.zeros((50, 80), dtype=np.uint8)
         preprocessed = np.zeros((50, 80), dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert result.shape == (50, 80, 3)
 
     def test_correct_dtype(self):
         """Test that output has uint8 dtype."""
         blurred = np.zeros((10, 10), dtype=np.uint8)
+        edges = np.zeros((10, 10), dtype=np.uint8)
         preprocessed = np.zeros((10, 10), dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert result.dtype == np.uint8
 
     def test_blue_channel_is_blurred(self):
         """Test that blue channel (index 0) contains blurred frame."""
         blurred = np.full((10, 10), 100, dtype=np.uint8)
+        edges = np.full((10, 10), 50, dtype=np.uint8)
         preprocessed = np.full((10, 10), 200, dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert np.array_equal(result[:, :, 0], blurred)
 
-    def test_green_channel_is_zero(self):
-        """Test that green channel (index 1) is all zeros."""
+    def test_green_channel_is_edges(self):
+        """Test that green channel (index 1) contains edge intersection."""
         blurred = np.full((10, 10), 100, dtype=np.uint8)
+        edges = np.full((10, 10), 150, dtype=np.uint8)
         preprocessed = np.full((10, 10), 200, dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
-        assert np.array_equal(result[:, :, 1], np.zeros((10, 10), dtype=np.uint8))
+        result = create_visualization(blurred, edges, preprocessed)
+        assert np.array_equal(result[:, :, 1], edges)
 
     def test_red_channel_is_preprocessed(self):
         """Test that red channel (index 2) contains preprocessed frame."""
         blurred = np.full((10, 10), 100, dtype=np.uint8)
+        edges = np.full((10, 10), 50, dtype=np.uint8)
         preprocessed = np.full((10, 10), 200, dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert np.array_equal(result[:, :, 2], preprocessed)
 
     def test_black_inputs_produce_black_output(self):
         """Test that black inputs produce black RGB output."""
         blurred = np.zeros((10, 10), dtype=np.uint8)
+        edges = np.zeros((10, 10), dtype=np.uint8)
         preprocessed = np.zeros((10, 10), dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         assert np.array_equal(result, np.zeros((10, 10, 3), dtype=np.uint8))
 
     def test_visual_color_interpretation(self):
         """Test color interpretation for visual validation."""
-        # Pure blue: blurred=255, preprocessed=0
+        # Pure blue: blurred=255, edges=0, preprocessed=0
         blurred = np.full((5, 5), 255, dtype=np.uint8)
+        edges = np.zeros((5, 5), dtype=np.uint8)
         preprocessed = np.zeros((5, 5), dtype=np.uint8)
-        result = create_dual_channel_visualization(blurred, preprocessed)
+        result = create_visualization(blurred, edges, preprocessed)
         # Should be [255, 0, 0] = blue in BGR
         assert np.array_equal(result[0, 0], [255, 0, 0])
 
-        # Pure red: blurred=0, preprocessed=255
+        # Pure green: blurred=0, edges=255, preprocessed=0
         blurred2 = np.zeros((5, 5), dtype=np.uint8)
-        preprocessed2 = np.full((5, 5), 255, dtype=np.uint8)
-        result2 = create_dual_channel_visualization(blurred2, preprocessed2)
-        # Should be [0, 0, 255] = red in BGR
-        assert np.array_equal(result2[0, 0], [0, 0, 255])
+        edges2 = np.full((5, 5), 255, dtype=np.uint8)
+        preprocessed2 = np.zeros((5, 5), dtype=np.uint8)
+        result2 = create_visualization(blurred2, edges2, preprocessed2)
+        # Should be [0, 255, 0] = green in BGR
+        assert np.array_equal(result2[0, 0], [0, 255, 0])
 
-        # Magenta: blurred=255, preprocessed=255
-        blurred3 = np.full((5, 5), 255, dtype=np.uint8)
+        # Pure red: blurred=0, edges=0, preprocessed=255
+        blurred3 = np.zeros((5, 5), dtype=np.uint8)
+        edges3 = np.zeros((5, 5), dtype=np.uint8)
         preprocessed3 = np.full((5, 5), 255, dtype=np.uint8)
-        result3 = create_dual_channel_visualization(blurred3, preprocessed3)
-        # Should be [255, 0, 255] = magenta in BGR
-        assert np.array_equal(result3[0, 0], [255, 0, 255])
+        result3 = create_visualization(blurred3, edges3, preprocessed3)
+        # Should be [0, 0, 255] = red in BGR
+        assert np.array_equal(result3[0, 0], [0, 0, 255])
+
+        # Yellow (green + red): blurred=0, edges=255, preprocessed=255
+        blurred4 = np.zeros((5, 5), dtype=np.uint8)
+        edges4 = np.full((5, 5), 255, dtype=np.uint8)
+        preprocessed4 = np.full((5, 5), 255, dtype=np.uint8)
+        result4 = create_visualization(blurred4, edges4, preprocessed4)
+        # Should be [0, 255, 255] = yellow in BGR
+        assert np.array_equal(result4[0, 0], [0, 255, 255])

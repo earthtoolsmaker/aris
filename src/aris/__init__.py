@@ -67,8 +67,9 @@ from aris.frame import (
 
 # Preprocessing functions
 from aris.preprocessing import (
-    create_dual_channel_visualization,
+    PreprocessingResult,
     create_gaussian_kernel,
+    create_visualization,
     preprocess_frame,
     smooth_frames_temporal,
 )
@@ -109,8 +110,9 @@ __all__ = [
     "get_video_duration",
     "save_frames_to_video",
     # Preprocessing
-    "create_dual_channel_visualization",
+    "create_visualization",
     "create_gaussian_kernel",
     "preprocess_frame",
+    "PreprocessingResult",
     "smooth_frames_temporal",
 ]
