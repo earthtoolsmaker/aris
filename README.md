@@ -1,8 +1,6 @@
 # ARIS Sonar Processing Toolkit
 
-[![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/earthtoolsmaker/aris)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml/badge.svg)](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml)
 
 A Python toolkit for processing ARIS (Adaptive Resolution Imaging Sonar) files. Convert sonar data to video, apply motion detection preprocessing, and stabilize jittery footage.
