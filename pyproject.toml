@@ -25,4 +25,20 @@ build-backend = "hatchling.build"
 dev = [
     "black>=25.1.0",
     "ipython>=9.4.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--cov=src/aris",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--ignore=src/aris/pyARIS/",
 ]
