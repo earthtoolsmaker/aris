@@ -248,7 +248,8 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the stabilize_and_preprocess_sonar_video CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -485,3 +486,7 @@ if __name__ == "__main__":
     logger.info(f"Successfully processed and wrote {frames_written} frames")
     logger.info(f"Output saved to: {filepath_save}")
     logger.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()

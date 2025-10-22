@@ -65,7 +65,8 @@ def validate_parsed_args(args: dict) -> bool:
     return True
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the extract_average_video_frame CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -90,3 +91,7 @@ if __name__ == "__main__":
         else:
             logger.error(f"Could not save the average frame from {filepath_video}")
             exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -126,7 +126,8 @@ def process_video_filepath(
         logger.error(f"Codec conversion {video_codec} not yet implemented")
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the encode_video_with_codec CLI script."""
     cli_parser = make_cli_parser()
     args = vars(cli_parser.parse_args())
     logger = logging.getLogger(__name__)
@@ -165,3 +166,7 @@ if __name__ == "__main__":
                 logger.error(f"Error processing {fp_video}: {e}")
 
         logger.info("Done ✅")
+
+
+if __name__ == "__main__":
+    main()

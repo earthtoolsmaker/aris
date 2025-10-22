@@ -3,10 +3,31 @@ name = "aris"
 version = "0.1.0"
 description = "Process ARIS files with Python"
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
     { name = "ETM", email = "earthtoolsmaker@gmail.com" }
 ]
 requires-python = ">=3.13"
+keywords = [
+    "aris",
+    "sonar",
+    "underwater",
+    "imaging",
+    "video-processing",
+    "oceanography",
+    "marine-research",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Multimedia :: Video",
+]
 dependencies = [
     "ffmpeg-python>=0.2.0",
     "matplotlib>=3.10.3",
@@ -16,6 +37,20 @@ dependencies = [
     "pytz>=2025.2",
     "tqdm>=4.67.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/earthtoolsmaker/aris"
+Repository = "https://github.com/earthtoolsmaker/aris"
+Issues = "https://github.com/earthtoolsmaker/aris/issues"
+
+[project.scripts]
+aris-convert = "aris.scripts.convert_aris_to_video:main"
+aris-chunk = "aris.scripts.chunk_video:main"
+aris-extract-frame = "aris.scripts.extract_average_video_frame:main"
+aris-encode = "aris.scripts.encode_video_with_codec:main"
+aris-stabilize = "aris.scripts.stabilize_sonar_video:main"
+aris-preprocess = "aris.scripts.preprocess_sonar_video:main"
+aris-stabilize-preprocess = "aris.scripts.stabilize_and_preprocess_sonar_video:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,7 +1,7 @@
 """
-Integration tests for extract_average_video_frame.py script.
+Integration tests for aris-extract-frame CLI command.
 
-Tests the CLI script that extracts average frames from video files.
+Tests the CLI command that extracts average frames from video files.
 """
 
 import subprocess
@@ -11,24 +11,23 @@ import cv2
 
 
 class TestExtractAverageFrameScript:
-    """Tests for extract_average_video_frame.py script."""
+    """Tests for aris-extract-frame CLI command."""
 
     def test_script_exists(self):
-        """Test that the script file exists."""
-        script_path = Path("scripts/extract_average_video_frame.py")
+        """Test that the script module exists in the package."""
+        script_path = Path("src/aris/scripts/extract_average_video_frame.py")
         assert script_path.exists()
 
     def test_extract_average_frame_basic(self, sample_reference_mp4, tmp_path):
         """Test basic average frame extraction from reference MP4."""
         output_path = tmp_path / "average_frame.jpg"
 
-        # Run the script
+        # Run the CLI command
         result = subprocess.run(
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(sample_reference_mp4),
                 "--filepath-save",
@@ -38,8 +37,8 @@ class TestExtractAverageFrameScript:
             text=True,
         )
 
-        # Check script succeeded
-        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        # Check command succeeded
+        assert result.returncode == 0, f"Command failed: {result.stderr}"
         assert output_path.exists()
         assert output_path.stat().st_size > 0
 
@@ -54,8 +53,7 @@ class TestExtractAverageFrameScript:
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(sample_reference_mp4),
                 "--filepath-save",
@@ -74,13 +72,12 @@ class TestExtractAverageFrameScript:
         """Test that output file is a valid image that can be loaded."""
         output_path = tmp_path / "average_frame.jpg"
 
-        # Run the script
+        # Run the CLI command
         subprocess.run(
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(sample_reference_mp4),
                 "--filepath-save",
@@ -99,15 +96,14 @@ class TestExtractAverageFrameScript:
         assert img.shape[2] == 3  # RGB
 
     def test_creates_parent_directories(self, sample_reference_mp4, tmp_path):
-        """Test that script creates parent directories if they don't exist."""
+        """Test that command creates parent directories if they don't exist."""
         output_path = tmp_path / "nested" / "dir" / "average_frame.jpg"
 
         result = subprocess.run(
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(sample_reference_mp4),
                 "--filepath-save",
@@ -124,7 +120,7 @@ class TestExtractAverageFrameScript:
         assert output_path.parent.exists()
 
     def test_nonexistent_video_fails(self, tmp_path):
-        """Test that script fails gracefully with non-existent video."""
+        """Test that command fails gracefully with non-existent video."""
         fake_video = tmp_path / "nonexistent.mp4"
         output_path = tmp_path / "output.jpg"
 
@@ -132,8 +128,7 @@ class TestExtractAverageFrameScript:
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(fake_video),
                 "--filepath-save",
@@ -148,7 +143,7 @@ class TestExtractAverageFrameScript:
         assert not output_path.exists()
 
     def test_different_output_formats(self, sample_reference_mp4, tmp_path):
-        """Test that script works with different image output formats."""
+        """Test that command works with different image output formats."""
         formats = ["jpg", "png", "bmp"]
 
         for fmt in formats:
@@ -158,8 +153,7 @@ class TestExtractAverageFrameScript:
                 [
                     "uv",
                     "run",
-                    "python",
-                    "scripts/extract_average_video_frame.py",
+                    "aris-extract-frame",
                     "--filepath-video",
                     str(sample_reference_mp4),
                     "--filepath-save",
@@ -189,8 +183,7 @@ class TestExtractAverageFrameScript:
             [
                 "uv",
                 "run",
-                "python",
-                "scripts/extract_average_video_frame.py",
+                "aris-extract-frame",
                 "--filepath-video",
                 str(sample_reference_mp4),
                 "--filepath-save",
