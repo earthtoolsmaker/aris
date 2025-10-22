@@ -104,13 +104,13 @@ def smooth_frames_temporal(
 def preprocess_frame(
     frame: NDArray[np.uint8],
     bg_subtractor: cv2.BackgroundSubtractorMOG2,
-    gaussian_kernel: int,
-    gaussian_sigma: float,
-    guided_radius: int,
-    guided_eps: float,
     frame_history: NDArray[np.uint8] | None,
     frame_count: int,
-    temporal_weight: float,
+    gaussian_kernel: int = 3,
+    gaussian_sigma: float = 1.4,
+    guided_radius: int = 10,
+    guided_eps: float = 0.01,
+    temporal_weight: float = 0.8,
     edge_canny_low: int = 200,
     edge_canny_high: int = 255,
     edge_dilation_size: int = 2,
@@ -128,13 +128,13 @@ def preprocess_frame(
     Args:
         frame: Input frame (grayscale)
         bg_subtractor: MOG2 background subtractor instance
-        gaussian_kernel: Gaussian blur kernel size (must be odd)
-        gaussian_sigma: Gaussian blur sigma value
-        guided_radius: Guided filter radius
-        guided_eps: Guided filter epsilon (regularization)
         frame_history: Previous processed frame for temporal smoothing (None for first frame)
         frame_count: Current frame number (0-indexed)
-        temporal_weight: Weight for current frame in temporal blending (0-1)
+        gaussian_kernel: Gaussian blur kernel size (must be odd, default: 3)
+        gaussian_sigma: Gaussian blur sigma value (default: 1.4)
+        guided_radius: Guided filter radius (default: 10)
+        guided_eps: Guided filter epsilon/regularization (default: 0.01)
+        temporal_weight: Weight for current frame in temporal blending, 0-1 (default: 0.8)
         edge_canny_low: Canny edge detection lower threshold (default: 200)
         edge_canny_high: Canny edge detection upper threshold (default: 255)
         edge_dilation_size: Dilation size for edge tolerance in pixels (default: 2)
