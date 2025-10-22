@@ -229,7 +229,6 @@ def main():
             # For a full window, output frame is at position 'center'
             # For incomplete windows at start, output frame is at position 0
             buffer_list = list(frame_buffer)
-            output_position = min(frames_written, center)
 
             # Determine which frames to use for smoothing
             # At start: use fewer frames (incomplete window on left)

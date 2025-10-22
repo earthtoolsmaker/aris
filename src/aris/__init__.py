@@ -55,11 +55,6 @@ For command-line usage, install the package and use CLI commands:
 __version__ = "0.1.0"
 
 # Core ARIS file format handling
-from aris.pyARIS.pyARIS import ARIS_File as ARISFile
-from aris.pyARIS.pyARIS import ARIS_Frame as ARISFrame
-from aris.pyARIS.pyARIS import DataImport
-from aris.pyARIS.pyARIS import FrameRead
-
 # Frame extraction and video generation
 from aris.frame import (
     aris_frames_to_mp4v_video,
@@ -70,6 +65,17 @@ from aris.frame import (
     is_grayscale,
 )
 
+# Preprocessing functions
+from aris.preprocessing import (
+    create_dual_channel_visualization,
+    create_gaussian_kernel,
+    preprocess_frame,
+    smooth_frames_temporal,
+)
+from aris.pyARIS.pyARIS import ARIS_File as ARISFile
+from aris.pyARIS.pyARIS import ARIS_Frame as ARISFrame
+from aris.pyARIS.pyARIS import DataImport, FrameRead
+
 # Video utilities
 from aris.video.utils import (
     encode_video_with_h264_codec,
@@ -78,14 +84,6 @@ from aris.video.utils import (
     get_fps,
     get_video_duration,
     save_frames_to_video,
-)
-
-# Preprocessing functions
-from aris.preprocessing import (
-    create_dual_channel_visualization,
-    create_gaussian_kernel,
-    preprocess_frame,
-    smooth_frames_temporal,
 )
 
 __all__ = [

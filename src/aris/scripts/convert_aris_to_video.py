@@ -190,7 +190,7 @@ def process_aris_filepath(
     logger.info("ARIS data details:")
     aris_data.info()
     filepath_video_save = get_filepath_video_save(
-        args_cli=args,
+        args_cli={"start_frame": start_frame, "end_frame": end_frame},
         filepath_aris=filepath_aris,
         aris_data=aris_data,
         dir_save=dir_save,
