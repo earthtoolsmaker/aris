@@ -59,6 +59,18 @@ source .venv/bin/activate
 
 After installation, the following commands are available from anywhere in your terminal:
 
+### Quick Reference
+
+| Command | Purpose | Input | Output |
+|---------|---------|-------|--------|
+| `aris-convert` | Convert ARIS files to MP4 | `.aris` files | `.mp4` videos |
+| `aris-stabilize-preprocess` | Combined stabilization + motion detection (recommended) | `.mp4` video | Preprocessed `.mp4` (RGB: blue=input, red=motion) |
+| `aris-stabilize` | Reduce temporal jitter | `.mp4` video | Stabilized `.mp4` |
+| `aris-preprocess` | Motion detection preprocessing | `.mp4` video | Preprocessed `.mp4` (RGB: blue=input, red=motion) |
+| `aris-chunk` | Split video into segments | `.mp4` video | Multiple `.mp4` chunks |
+| `aris-extract-frame` | Extract average frame | `.mp4` video | `.jpg` thumbnail |
+| `aris-encode` | Re-encode with codec | `.mp4` video(s) | Re-encoded `.mp4` videos |
+
 ### Core Conversion
 
 **Convert ARIS files to MP4 videos:**
