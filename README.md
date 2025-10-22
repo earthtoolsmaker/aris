@@ -6,6 +6,9 @@ A Python toolkit for processing ARIS (Adaptive Resolution Imaging Sonar) files. 
 
 https://github.com/user-attachments/assets/b4fd0268-79d6-4215-b934-3c3f7b5169a9
 
+**Left:** Raw ARIS sonar data converted to video
+**Right:** Preprocessed output showing detected motion (dual-channel visualization: blue=input, red=motion)
+
 ## What is ARIS?
 
 ARIS is a high-frequency imaging sonar system used for underwater imaging and mapping. Unlike traditional optical cameras that rely on light, ARIS uses sound waves to create detailed images in murky water, darkness, or sediment-laden environments. This toolkit processes ARIS sonar recordings into analyzable video formats and applies advanced preprocessing for fish detection and motion analysis.
