@@ -1,6 +1,6 @@
 [project]
 name = "aris"
-version = "0.1.0"
+version = "0.1.1"
 description = "Process ARIS files with Python"
 readme = "README.md"
 license = { text = "MIT" }
@@ -55,6 +55,19 @@ aris-stabilize-preprocess = "aris.scripts.stabilize_and_preprocess_sonar_video:m
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aris"]
+exclude = [
+    "tests/",
+    "tests/**/*",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "tests/",
+    "tests/**/*",
+]
 
 [dependency-groups]
 dev = [
