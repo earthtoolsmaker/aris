@@ -1,6 +1,6 @@
 # ARIS Sonar Processing Toolkit
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/earthtoolsmaker/aris)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/earthtoolsmaker/aris)
 [![CI](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml/badge.svg)](https://github.com/earthtoolsmaker/aris/actions/workflows/ci.yml)
 [![Development Status](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/earthtoolsmaker/aris)
 
