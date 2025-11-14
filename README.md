@@ -221,3 +221,19 @@ aris-chunk \
   --dir-save ./data/chunks/ \
   --duration-seconds 120
 ```
+
+## Acknowledgements
+
+We would like to thank our partners for their work that inspired this library:
+
+```latex
+@inproceedings{xu2024salina,
+  author    = {Xu, Chi and Qian, Rongsheng and Fang, Hao and Ma, Xiaoqiang
+               and Atlas, William I. and Liu, Jiangchuan and Spoljaric, Mark A.},
+  title     = {SALINA: Towards Sustainable Live Sonar Analytics in Wild Ecosystems},
+  booktitle = {Proceedings of the 22nd ACM Conference on Embedded Networked Sensor Systems (SenSys '24)},
+  year      = {2024},
+  pages     = {68--81},
+  doi       = {10.1145/3666025.3699323}
+}
+```
