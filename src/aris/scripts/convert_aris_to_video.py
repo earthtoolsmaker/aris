@@ -164,7 +164,7 @@ def main():
     )
 
     if not filepaths_aris_to_process:
-        logger.warning(f"No ARIS files found to process")
+        logger.warning("No ARIS files found to process")
         exit(0)
 
     logger.info(f"Found {len(filepaths_aris_to_process)} ARIS file(s) to process")
