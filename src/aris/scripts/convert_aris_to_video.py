@@ -187,10 +187,14 @@ def main():
             failed_count += 1
 
     logger.info("Conversion complete!")
-    logger.info(f"Successfully converted: {success_count}/{len(filepaths_aris_to_process)} files")
+    logger.info(
+        f"Successfully converted: {success_count}/{len(filepaths_aris_to_process)} files"
+    )
 
     if failed_count > 0:
-        logger.warning(f"Failed to convert: {failed_count}/{len(filepaths_aris_to_process)} files")
+        logger.warning(
+            f"Failed to convert: {failed_count}/{len(filepaths_aris_to_process)} files"
+        )
         exit(1)
 
     logger.info("Done")
