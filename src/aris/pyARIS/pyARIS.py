@@ -14,6 +14,7 @@ import datetime
 import struct
 import subprocess as sp
 
+import cv2
 import numpy as np
 import pytz
 import tqdm
@@ -687,7 +688,9 @@ def DataImport(filename, startFrame=1, frameBuffer=0):
     data.close()
 
     # Create an empty container for the lookup table
-    output_data.LUP = None
+    output_data.LUT = False
+    output_data.map_y = None
+    output_data.map_x = None
 
     # Load the first frame
     frame = FrameRead(output_data, startFrame)
@@ -1178,16 +1181,12 @@ def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
         ARIS_Frame.BeamCount = 128
 
     data.seek(frameoffset + 1024, 0)
-    frame = np.empty([samplesperbeam, ARIS_Frame.BeamCount], dtype=float)
-    for r in range(len(frame)):
-        for c in range(len(frame[r])):
-            frame[r][c] = struct.unpack("B", data.read(1))[0]
-    frame = np.fliplr(frame)
 
-    # Remap the data from 0-255 to 0-80 dB
-    # remap = lambda t: (t * 80)/255
-    # vfunc = np.vectorize(remap)
-    # frame = vfunc(frame)
+    frame = np.ndarray(
+        (samplesperbeam, ARIS_Frame.BeamCount),
+        "<B",
+        data.read(samplesperbeam * ARIS_Frame.BeamCount),
+    )
 
     output.frame_data = frame
     output.WinStart = output.samplestartdelay * 0.000001 * output.soundspeed / 2
@@ -1195,11 +1194,12 @@ def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
     # Close the data file
     data.close()
 
-    # Create the lookup table
-    if ARIS_data.LUP == None:
-        createLUP(ARIS_data, output)
+    # Create the lookup table if not present
+    if ARIS_data.LUT == False:
+        LUT(ARIS_data, output)
+        ARIS_data.LUT = True
 
-    # Remap the first frame
+    # Remap the frame
     remapARIS(ARIS_data, output, frameBuffer)
 
     return output
@@ -1232,7 +1232,6 @@ def getBeamBin(x, y, frame):
 
 
 def px2Meters(x, y, frame, xdim=None):
-    # WinStart = frame.samplestartdelay * 0.000001 * frame.soundspeed / 2
     pix2Meter = frame.sampleperiod * 0.000001 * frame.soundspeed / 2
     if xdim == None:
         xdim = int(getXY(0, frame.samplesperbeam, frame)[0] * (1 / pix2Meter) * 2)
@@ -1241,26 +1240,79 @@ def px2Meters(x, y, frame, xdim=None):
     return x1, y1
 
 
-def createLUP(ARISFile, frame):
+def getBeam(x, y, beamcount):
+    angle = np.rad2deg(np.tan(x / y))
+    beamnum = beamLookUp.BeamLookUp(-angle, beamcount)
+    return beamnum
+
+
+getBeamVec = np.vectorize(getBeam)
+
+
+def getBin(x, y, winstart, sampleperiod, soundspeed):
+    angle = np.rad2deg(np.tan(x / y))
+    hyp = y / np.cos(np.deg2rad(angle))
+    binnum2 = int((2 * (hyp - winstart)) / (sampleperiod * 0.000001 * soundspeed))
+    return binnum2
+
+
+getBinVec = np.vectorize(getBin)
+
+
+def LUT(ARISFile, frame):
+    """The LUT function creates a lookup table which is subsequently used to
+    remap the sonar data from beams and bins to x, y spatial coordinates.
+
+    Parameters
+    -----------
+    ARISFile : ARIS data structure returned via pyARIS.DataImport()
+    frame : A ARIS frame class object
+
+    Returns
+    -------
+    output : an x_map and y_map will be added to the ARISFile class object
+
+    Notes
+    -------
+    Basic frame attributes can be found by calling the frame.info() method.
+    A list of all the frames attributes can be found by using dir(frame), some
+        of these may or may not be used by the ARIS.
+    """
     # Lookup dimensions
     SampleLength = frame.sampleperiod * 0.000001 * frame.soundspeed / 2
     ARISFile.ydim = int(frame.samplesperbeam)
-    ARISFile.xdim = int(
-        getXY(0, frame.samplesperbeam, frame)[0] * (1 / SampleLength) * 2
-    )
+    ARISFile.xdim = int(getXY(0, frame.samplesperbeam, frame)[0] * (1 / SampleLength) * 2)
 
-    LUP = {}
+    # Convert from the images pixel space to real world coordinates in meters
+    x = np.arange(ARISFile.xdim)
+    y = np.arange(ARISFile.ydim)
 
-    # Iterate through each point in the frame and lookup data
-    for x in range(ARISFile.xdim):
-        for y in range(ARISFile.ydim):
-            x1, y1 = px2Meters(x, y, frame, xdim=ARISFile.xdim)
-            Beam, Bin = getBeamBin(x1, y1, frame)
-            if Beam != 999:
-                if Bin < frame.samplesperbeam:
-                    LUP[(x, y)] = (Bin, Beam)
+    pix2Meter = frame.sampleperiod * 0.000001 * frame.soundspeed / 2
 
-    ARISFile.LUP = LUP
+    x1 = (x - ARISFile.xdim / 2) * pix2Meter
+    y1 = y1 = (y * pix2Meter) + (frame.WinStart)
+
+    # Create a matrix in real-world coordinates with the sonar located at 0,0
+    xx, yy = np.meshgrid(x1, y1)
+
+    # Use the getBeamVec function to return the map_x
+    beamcount = frame.BeamCount
+    beams = getBeamVec(xx, yy, beamcount)
+
+    # Create a map_y based on the bin locations
+    winstart = frame.WinStart
+    sampleperiod = frame.sampleperiod
+    soundspeed = frame.soundspeed
+    bins = getBinVec(xx, yy, winstart, sampleperiod, soundspeed)
+
+    # Clip the map_y mask
+    bins = bins.astype(np.float32)
+    mask = np.isnan(beams)
+    bins[mask] = beams[mask]
+
+    # Embed the maps in the ARISFile object
+    ARISFile.map_y = bins
+    ARISFile.map_x = beams.astype(np.float32)
 
 
 def remapARIS(ARISFile, frame, frameBuffer=None):
@@ -1278,22 +1330,23 @@ def remapARIS(ARISFile, frame, frameBuffer=None):
     A remapped frame which is stored in the frames data structure as frame.remap
     """
     # Create an empty frame
-    Remap = np.zeros([ARISFile.xdim, ARISFile.ydim])
+    Remap = np.zeros([ARISFile.ydim, ARISFile.xdim])
 
-    # Populate the empty frame
-    for key in ARISFile.LUP:
-        Remap[key[0], key[1]] = frame.frame_data[
-            ARISFile.LUP[key][0], ARISFile.LUP[key][1]
-        ]
+    # Use OpenCV's remap function to populate the empty frame
+    Remap = cv2.remap(frame.frame_data, ARISFile.map_x, ARISFile.map_y, cv2.INTER_NEAREST)
 
-    Remap = np.rot90(Remap, 1)
+    Remap = np.flipud(Remap)
 
     # Add buffer is requested
     if frameBuffer != None:
         buffY = int(ARISFile.ydim * frameBuffer)
         buffX = int(ARISFile.xdim * frameBuffer)
         Remap = np.concatenate(
-            (np.ones([ARISFile.ydim, buffX]), Remap, np.ones([ARISFile.ydim, buffX])),
+            (
+                np.ones([ARISFile.ydim, buffX]),
+                Remap,
+                np.ones([ARISFile.ydim, buffX]),
+            ),
             axis=1,
         )
         Remap = np.concatenate(
@@ -1317,7 +1370,7 @@ def VideoExport(
     timestamp=False,
     fontsize=30,
     ts_pos=(0, 0),
-    vbr=20,
+    vbr=10,
 ):
     """Output video using the ffmpeg pipeline. The current implementation
     outputs compresses png files and outputs a mp4.
@@ -1339,7 +1392,7 @@ def VideoExport(
 
     Notes
     ------
-    Currently this function looks for ffmpeg.exe in the current working directory.
+    ffmpeg must be available in the system PATH.
     Must have the '*.mp4' file extension.
     Uses the tqdm package to display a status bar.
 
@@ -1350,6 +1403,7 @@ def VideoExport(
     """
 
     # Command to send via the command prompt which specifies the pipe parameters
+    # Linux compatible: use 'ffmpeg' instead of 'ffmpeg.exe'
     command = [
         "ffmpeg",
         "-y",  # (optional) overwrite output file if it exists
@@ -1358,22 +1412,19 @@ def VideoExport(
         "-vcodec",
         "mjpeg",
         "-r",
-        "1",
-        #           '-s', '793x1327', # size of one frame
-        "-r",
         str(fps),  # frames per second
         "-i",
         "-",  # The input comes from a pipe
         "-an",  # Tells FFMPEG not to expect any audio
-        "-qscale:v",
-        str(vbr),
         "-vcodec",
         "mpeg4",
+        "-q:v",
+        str(vbr),  # Variable bitrate quality
         filename,
     ]
 
     # Open the pipe
-    pipe = sp.Popen(command, stdin=sp.PIPE)
+    pipe = sp.Popen(command, stdin=sp.PIPE, stderr=sp.DEVNULL)
 
     if end_frame is None:
         end_frame = data.FrameCount
@@ -1389,8 +1440,13 @@ def VideoExport(
                 ).strftime("%Y-%m-%d %H:%M:%S")
             )
             draw = ImageDraw.Draw(im)
-            font = ImageFont.truetype("./arial.ttf", fontsize)
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", fontsize)
+            except OSError:
+                # Fallback to default font if DejaVuSans not available
+                font = ImageFont.load_default()
             draw.text(ts_pos, ts, font=font, fill="white")
         im.save(pipe.stdin, "JPEG")
 
     pipe.stdin.close()
+    pipe.wait()
