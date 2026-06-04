@@ -89,7 +89,7 @@ def process_video_filepath(
     video_codec: str,
     logger: Logger,
     force: bool = False,
-) -> None:
+) -> bool:
     """
     Process a single video file by encoding it with the specified codec.
 
@@ -104,6 +104,9 @@ def process_video_filepath(
         video_codec (str): The codec to use for encoding the video.
         logger (Logger): The logger instance to record processing information.
         force (bool): If True, will overwrite existing files without checking.
+
+    Returns:
+        bool: True if the video was encoded (or already present), False otherwise.
     """
     filepath_video_with_new_codec = dir_save / filepath_video.name
     logger.info(f"filepath_video_with_new_codec: {filepath_video_with_new_codec}")
@@ -115,6 +118,7 @@ def process_video_filepath(
         logger.info(
             f"Skipping because the video is already generated in {filepath_video_with_new_codec}"
         )
+        return True
     elif video_codec == "h264":
         filepath_video_with_new_codec.parent.mkdir(parents=True, exist_ok=True)
         video_utils.encode_video_with_h264_codec(
@@ -122,8 +126,10 @@ def process_video_filepath(
             filepath_output=filepath_video_with_new_codec,
         )
         logger.info(f"Done with video filepath {filepath_video}")
+        return True
     else:
         logger.error(f"Codec conversion {video_codec} not yet implemented")
+        return False
 
 
 def main():
@@ -154,16 +160,26 @@ def main():
         logger.info(f"Saving results in {dir_save}")
         dir_save.mkdir(parents=True, exist_ok=True)
 
+        failed_count = 0
         for fp_video in tqdm(filepaths_videos_to_process_shuffled):
             try:
-                process_video_filepath(
+                if not process_video_filepath(
                     filepath_video=fp_video,
                     dir_save=dir_save,
                     logger=logger,
                     video_codec=video_codec,
-                )
+                ):
+                    failed_count += 1
             except Exception as e:
                 logger.error(f"Error processing {fp_video}: {e}")
+                failed_count += 1
+
+        if failed_count > 0:
+            logger.error(
+                f"Failed to encode {failed_count}/"
+                f"{len(filepaths_videos_to_process_shuffled)} videos"
+            )
+            exit(1)
 
         logger.info("Done ✅")
 
