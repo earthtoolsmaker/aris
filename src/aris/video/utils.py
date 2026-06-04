@@ -41,14 +41,30 @@ def encode_video_with_h264_codec(filepath_input: Path, filepath_output: Path):
     try:
         (
             ffmpeg.input(str(filepath_input))
-            .output(str(filepath_output), vcodec="libx264", preset="medium")
+            .output(
+                str(filepath_output),
+                vcodec="libx264",
+                preset="medium",
+                # libx264 with yuv420p requires even width AND height. ARIS
+                # sonar frames are frequently odd (e.g. 924x1765), which makes
+                # the encoder fail to open and write a 0-byte file. Pad each
+                # dimension up to the next even number (adds at most a 1px
+                # border, no rescaling).
+                vf="pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                # yuv420p + faststart make the output playable in web browsers
+                # (moov atom is moved to the front for progressive streaming).
+                pix_fmt="yuv420p",
+                movflags="+faststart",
+            )
             .run(capture_stdout=True, capture_stderr=True)
         )
         logging.info("Video encoded successfully.")
 
     except ffmpeg.Error as e:
-        logging.error("An error occurred while encoding the video.")
-        logging.error("Error message:", e.stderr.decode())
+        logging.error(
+            "An error occurred while encoding the video: %s", e.stderr.decode()
+        )
+        raise
 
 
 def get_average_frame(

@@ -5,9 +5,14 @@ Tests video processing utilities including frame extraction, averaging,
 metadata reading, and video encoding operations.
 """
 
+import io
+import subprocess
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pytest
+from PIL import Image
 
 from aris.video.utils import (
     encode_video_with_h264_codec,
@@ -17,6 +22,43 @@ from aris.video.utils import (
     get_video_duration,
     save_frames_to_video,
 )
+
+
+def _write_odd_dimension_video(
+    path: Path, width: int, height: int, n_frames: int = 12, fps: int = 15
+) -> None:
+    """Write an mp4 with odd dimensions, the way pyARIS does.
+
+    cv2.VideoWriter silently rounds odd dimensions down to even, so we pipe
+    MJPEG frames (which permit odd dimensions) into an mpeg4 mp4 to faithfully
+    reproduce ARIS-style odd-sized clips.
+    """
+    command = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        "-r",
+        str(fps),
+        "-i",
+        "-",
+        "-an",
+        "-vcodec",
+        "mpeg4",
+        "-q:v",
+        "5",
+        str(path),
+    ]
+    pipe = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    for i in range(n_frames):
+        frame = np.full((height, width, 3), (i * 20) % 255, dtype=np.uint8)
+        buffer = io.BytesIO()
+        Image.fromarray(frame).save(buffer, format="JPEG")
+        pipe.stdin.write(buffer.getvalue())
+    pipe.stdin.close()
+    pipe.wait()
 
 
 class TestGetAverageFrame:
@@ -248,3 +290,36 @@ class TestEncodeVideoWithH264Codec:
 
         assert output_path.exists()
         assert output_path.parent.exists()
+
+    def test_encodes_odd_dimension_video(self, tmp_path):
+        """Regression: odd-dimension input must be padded to even, not dropped.
+
+        libx264 with yuv420p requires even width AND height. ARIS sonar clips
+        are frequently odd (e.g. 924x1765), which previously made the encoder
+        fail to open and write a 0-byte file. The input here mirrors how pyARIS
+        produces video: MJPEG frames (which allow odd dimensions) piped into an
+        mpeg4 mp4 -- cv2.VideoWriter cannot create odd dimensions, it silently
+        rounds them down to even.
+        """
+        odd_video = tmp_path / "odd_dimensions.mp4"
+        _write_odd_dimension_video(odd_video, width=63, height=65)
+
+        # Sanity check: the input really is odd-dimensioned.
+        cap = cv2.VideoCapture(str(odd_video))
+        assert int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) % 2 == 1
+        assert int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) % 2 == 1
+        cap.release()
+
+        output_path = tmp_path / "encoded_odd.mp4"
+        encode_video_with_h264_codec(odd_video, output_path)
+
+        # The output must be a real, non-empty file (not a 0-byte stub) with
+        # both dimensions padded up to the next even number.
+        assert output_path.exists()
+        assert output_path.stat().st_size > 0
+        cap = cv2.VideoCapture(str(output_path))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        assert width % 2 == 0
+        assert height % 2 == 0
