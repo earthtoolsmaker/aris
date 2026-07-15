@@ -311,6 +311,14 @@ def main():
     cap.release()
     logger.info(f"Successfully processed {frame_count} frames")
 
+    # Frame 0 has no MOG2 background model on the subtractor's first apply(), so
+    # ~100% of pixels are flagged as motion and the red channel whites out. MOG2
+    # still learned from frame 0 above; here we replace frame 0's output with
+    # frame 1's so the whiteout never reaches the video, keeping the frame count
+    # and index alignment intact. See issue #107.
+    if len(processed_frames) > 1:
+        processed_frames[0] = processed_frames[1]
+
     # Save the processed video
     filepath_save.parent.mkdir(parents=True, exist_ok=True)
     logger.info(f"Saving preprocessed video to: {filepath_save}")

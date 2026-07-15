@@ -360,6 +360,22 @@ def main():
     frame_idx = 0
     frames_written = 0
 
+    # Frame 0 has no MOG2 background model on the subtractor's first apply(), so
+    # ~100% of pixels are flagged as motion and the red channel whites out. Feed
+    # frame 0 to MOG2 as usual (it still helps build the model), but emit frame
+    # 1's output in its place, duplicated, so the whiteout never reaches the video
+    # while the frame count and index alignment are preserved. See issue #107.
+    pending_first_output = [None]
+
+    def write_output(frame):
+        if frames_written == 0:
+            pending_first_output[0] = frame  # stash frame 0; frame 1 will replace it
+            return
+        if pending_first_output[0] is not None:
+            video_writer.write(frame)  # slot 0 <- frame 1's output
+            pending_first_output[0] = None
+        video_writer.write(frame)
+
     logger.info(
         "Processing frames with combined stabilization and preprocessing (memory-efficient)..."
     )
@@ -441,7 +457,7 @@ def main():
             )
 
             # Write frame immediately (memory-efficient!)
-            video_writer.write(output_frame)
+            write_output(output_frame)
             frames_written += 1
             pbar.update(1)
 
@@ -497,7 +513,7 @@ def main():
             output_frame = aris.preprocessing.create_visualization(
                 result.blurred, result.edges, result.motion
             )
-            video_writer.write(output_frame)
+            write_output(output_frame)
             frames_written += 1
             pbar.update(1)
 
@@ -506,6 +522,10 @@ def main():
                 stabilization_buffer.popleft()
             else:
                 break
+
+    # Degenerate single-frame clip: no frame 1 to substitute, so emit frame 0.
+    if pending_first_output[0] is not None:
+        video_writer.write(pending_first_output[0])
 
     # Cleanup
     cap.release()
