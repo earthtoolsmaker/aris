@@ -710,6 +710,8 @@ def DataImport(filename, startFrame=1, frameBuffer=0):
     output_data.LUT = False
     output_data.map_y = None
     output_data.map_x = None
+    output_data.map_1 = None
+    output_data.map_2 = None
 
     # Load the first frame
     frame = FrameRead(output_data, startFrame)
@@ -718,10 +720,8 @@ def DataImport(filename, startFrame=1, frameBuffer=0):
     return output_data, frame
 
 
-def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
-    """The FrameRead function loads in the specified frame data from the raw ARIS data.
-    The function then calls the remapARIS() function which remaps the raw data into
-    a 2D real world projection.
+def FrameRead(ARIS_data, frameIndex, frameBuffer=None, remap=True) -> ARIS_Frame:
+    """Load frame data from the raw ARIS file; optionally remap to 2D.
 
     Parameters
     -----------
@@ -729,6 +729,8 @@ def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
     frameIndex : frame number
     frameBuffer : This parameter add a specified number of pixels around the edges
                     of the remapped frame.
+    remap : If True (default), call :func:`remapARIS`. If False, only read raw
+            beam/bin data (and build the LUT once if needed); caller remaps later.
 
     Returns
     -------
@@ -1210,7 +1212,6 @@ def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
     output.frame_data = frame
     output.WinStart = output.samplestartdelay * 0.000001 * output.soundspeed / 2
 
-    # Close the data file
     data.close()
 
     # Create the lookup table if not present
@@ -1218,8 +1219,8 @@ def FrameRead(ARIS_data, frameIndex, frameBuffer=None) -> ARIS_Frame:
         LUT(ARIS_data, output)
         ARIS_data.LUT = True
 
-    # Remap the frame
-    remapARIS(ARIS_data, output, frameBuffer)
+    if remap:
+        remapARIS(ARIS_data, output, frameBuffer)
 
     return output
 
@@ -1343,9 +1344,16 @@ def LUT(ARISFile, frame):
     mask = np.isnan(beams)
     bins[mask] = beams[mask]
 
-    # Embed the maps in the ARISFile object
+    # Embed float maps (kept for debugging / callers) and fixed-point maps for remap.
     ARISFile.map_y = bins
     ARISFile.map_x = beams.astype(np.float32)
+    # nninterpolation=True matches INTER_NEAREST (map_2 may be empty).
+    ARISFile.map_1, ARISFile.map_2 = cv2.convertMaps(
+        np.ascontiguousarray(ARISFile.map_x),
+        np.ascontiguousarray(ARISFile.map_y),
+        cv2.CV_16SC2,
+        nninterpolation=True,
+    )
 
 
 def remapARIS(ARISFile, frame, frameBuffer=None):
@@ -1362,12 +1370,13 @@ def remapARIS(ARISFile, frame, frameBuffer=None):
     -------
     A remapped frame which is stored in the frames data structure as frame.remap
     """
-    # Create an empty frame
-    Remap = np.zeros([ARISFile.ydim, ARISFile.xdim])
-
-    # Use OpenCV's remap function to populate the empty frame
-    Remap = cv2.remap(frame.frame_data, ARISFile.map_x, ARISFile.map_y, cv2.INTER_NEAREST)
-
+    # uint8 in → uint8 out; fixed-point maps from LUT/convertMaps
+    Remap = cv2.remap(
+        frame.frame_data,
+        ARISFile.map_1,
+        ARISFile.map_2,
+        cv2.INTER_NEAREST,
+    )
     Remap = np.flipud(Remap)
 
     # Add buffer is requested
@@ -1376,22 +1385,21 @@ def remapARIS(ARISFile, frame, frameBuffer=None):
         buffX = int(ARISFile.xdim * frameBuffer)
         Remap = np.concatenate(
             (
-                np.ones([ARISFile.ydim, buffX]),
+                np.ones([ARISFile.ydim, buffX], dtype=np.uint8),
                 Remap,
-                np.ones([ARISFile.ydim, buffX]),
+                np.ones([ARISFile.ydim, buffX], dtype=np.uint8),
             ),
             axis=1,
         )
         Remap = np.concatenate(
             (
-                np.ones([buffY, ARISFile.xdim + buffX * 2]),
+                np.ones([buffY, ARISFile.xdim + buffX * 2], dtype=np.uint8),
                 Remap,
-                np.ones([buffY, ARISFile.xdim + buffX * 2]),
+                np.ones([buffY, ARISFile.xdim + buffX * 2], dtype=np.uint8),
             )
         )
 
-    # Add to frame data
-    frame.remap = Remap.astype("uint8")
+    frame.remap = Remap
 
 
 def VideoExport(
@@ -1406,11 +1414,12 @@ def VideoExport(
     vbr=10,
     num_workers=1,
     codec="mpeg4",
+    show_progress=True,
 ):
-    """Output video using in-process PyAV, overlapping FrameRead with encode.
+    """Output video using in-process PyAV, overlapping I/O with remap/encode.
 
-    Producer runs FrameRead; consumers do timestamp/pad/gray→yuv420p; ordered
-    writer only encodes/muxes. Overlaps prep with encode like the former ffmpeg pipe.
+    Producer reads raw frames (no remap); consumers remap + timestamp/pad +
+    pixel prep; ordered writer only encodes/muxes.
 
     Parameters
     -----------
@@ -1424,6 +1433,7 @@ def VideoExport(
     vbr : (Int) Variable Bitrate of output video (1-31) 1 being highest quality, 31 being lowest quality
     num_workers : (Int) Pass-through consumer threads (default 1; raise when consumers do real work)
     codec : (Str) PyAV encoder name (default ``mpeg4``; e.g. ``h264_videotoolbox``, ``h264_nvenc``)
+    show_progress : (Bool) Show tqdm progress bar
 
     Returns
     -------
@@ -1452,7 +1462,7 @@ def VideoExport(
     use_gray = _codec_accepts_gray(codec)
     container = None
     stream = None
-    progress = tqdm.tqdm(total=n_frames)
+    progress = tqdm.tqdm(total=n_frames, disable=not show_progress)
     t_produce = 0.0
     t_consume = 0.0
     t_encode = 0.0
@@ -1463,7 +1473,7 @@ def VideoExport(
         nonlocal t_produce
         for out_i, frame_i in enumerate(frame_indices):
             t0 = time.perf_counter()
-            frame = FrameRead(data, frame_i)
+            frame = FrameRead(data, frame_i, remap=False)
             t_produce += time.perf_counter() - t0
             yield out_i, frame
 
@@ -1471,6 +1481,7 @@ def VideoExport(
         nonlocal t_consume
         t0 = time.perf_counter()
         out_i, frame = item
+        remapARIS(data, frame, None)
         remap = frame.remap
         if timestamp:
             im = Image.fromarray(remap)
@@ -1575,3 +1586,4 @@ def VideoExport(
         progress.close()
         if container is not None:
             container.close()
+
