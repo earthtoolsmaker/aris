@@ -33,6 +33,15 @@ _BASELINE_VBR = 10
 _BASELINE_BITRATE = 5_870_000
 
 
+def _codec_accepts_gray(codec_name: str) -> bool:
+    """True if the encoder lists ``gray`` (Y-only) among its pixel formats."""
+    try:
+        c = av.codec.Codec(codec_name, "w")
+    except Exception:
+        return False
+    return any(f.name == "gray" for f in (c.video_formats or []))
+
+
 class ARIS_File:
     "This is a class container for the ARIS file headers"
 
@@ -1386,8 +1395,8 @@ def VideoExport(
 ):
     """Output video using in-process PyAV, overlapping FrameRead with encode.
 
-    Producer runs FrameRead; pass-through consumers (optional timestamp); ordered
-    writer encodes. Overlaps read/remap with encode like the former ffmpeg pipe.
+    Producer runs FrameRead; consumers do timestamp/pad/gray→yuv420p; ordered
+    writer only encodes/muxes. Overlaps prep with encode like the former ffmpeg pipe.
 
     Parameters
     -----------
@@ -1425,12 +1434,15 @@ def VideoExport(
 
     frame_indices = range(start_frame - 1, end_frame)
     n_frames = len(frame_indices)
+    # libx264/h264/hevc/… accept gray; mpeg4 does not (yuv420p only).
+    use_gray = _codec_accepts_gray(codec)
     container = None
     stream = None
     progress = tqdm.tqdm(total=n_frames)
     t_produce = 0.0
     t_consume = 0.0
     t_encode = 0.0
+    t_mux = 0.0
     timing_lock = threading.Lock()
 
     def producer():
@@ -1460,35 +1472,41 @@ def VideoExport(
                 font = ImageFont.load_default()
             draw.text(ts_pos, ts, font=font, fill="white")
             remap = np.asarray(im)
-        # H.264/HEVC (yuv420p) need even W/H; mpeg4 tolerates odd ARIS remaps.
-        if codec != "mpeg4":
+        if use_gray:
+            video_frame = av.VideoFrame.from_ndarray(
+                np.ascontiguousarray(remap), format="gray"
+            )
+        else:
+            # yuv420p (I420) needs even W/H; pad odd ARIS remaps.
             h, w = remap.shape[:2]
             if (h | w) & 1:
                 remap = np.pad(remap, ((0, h & 1), (0, w & 1)), mode="edge")
+                h, w = remap.shape[:2]
+            # Y = gray, U/V = 128 (I420 = Y plane + half-height chroma block).
+            yuv = np.vstack([remap, np.full((h // 2, w), 128, dtype=np.uint8)])
+            video_frame = av.VideoFrame.from_ndarray(yuv, format="yuv420p")
         with timing_lock:
             t_consume += time.perf_counter() - t0
-        return out_i, remap
+        return out_i, video_frame
 
     # ProcessingPipeline does not reorder; buffer like muimg VideoEncodePipeline.
     next_index = 0
     frame_buffer = {}
 
     def writer(result):
-        nonlocal container, stream, next_index, t_encode
-        index, remap = result
-        frame_buffer[index] = remap
+        nonlocal container, stream, next_index, t_encode, t_mux
+        index, video_frame = result
+        frame_buffer[index] = video_frame
         while next_index in frame_buffer:
-            remap = frame_buffer.pop(next_index)
-            t0 = time.perf_counter()
+            video_frame = frame_buffer.pop(next_index)
             if container is None:
-                height, width = remap.shape[:2]
                 container = av.open(filename, mode="w")
                 stream = container.add_stream(
                     codec, rate=Fraction(fps).limit_denominator()
                 )
-                stream.width = width
-                stream.height = height
-                stream.pix_fmt = "yuv420p"
+                stream.width = video_frame.width
+                stream.height = video_frame.height
+                stream.pix_fmt = "gray" if use_gray else "yuv420p"
                 # Match former JPEG→ffmpeg -q:v <vbr> *output size* (not raw
                 # qscale — that under-rates vs the JPEG-pipe path).
                 q = max(int(vbr), 1)
@@ -1497,11 +1515,13 @@ def VideoExport(
                 # Default tolerance (128k) is below our ~5.87 Mbps target.
                 stream.codec_context.bit_rate_tolerance = br
 
-            video_frame = av.VideoFrame.from_ndarray(remap, format="gray")
-            video_frame = video_frame.reformat(format="yuv420p")
-            for packet in stream.encode(video_frame):
-                container.mux(packet)
+            t0 = time.perf_counter()
+            packets = list(stream.encode(video_frame))
             t_encode += time.perf_counter() - t0
+            t0 = time.perf_counter()
+            for packet in packets:
+                container.mux(packet)
+            t_mux += time.perf_counter() - t0
             progress.update(1)
             next_index += 1
 
@@ -1530,6 +1550,7 @@ def VideoExport(
                 "t_produce": t_produce,
                 "t_consume": t_consume,
                 "t_encode": t_encode,
+                "t_mux": t_mux,
             }
             print(f"queue_stats: {_round_stats(qstats)}", flush=True)
             print(f"timing:      {_round_stats(timing)}", flush=True)

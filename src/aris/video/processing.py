@@ -14,47 +14,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_PIPELINE_CALLABLE = object()
 
 
-class ProcessingThreadPool:
-    """A simple thread pool for running worker functions with different argument patterns."""
-    
-    def __init__(self, num_workers: int, thread_name_prefix: str = "Worker"):
-        self.num_workers = num_workers
-        self.thread_name_prefix = thread_name_prefix
-        self.threads: list[threading.Thread] = []
-    
-    def run_workers(self, worker_func: Callable[..., Any], worker_args_list: list[tuple[Any, ...]]) -> None:
-        """
-        Run worker functions in parallel threads and wait for completion.
-        
-        Args:
-            worker_func: The function to run in each thread
-            worker_args_list: List of argument tuples, one per worker
-        """
-        logger.info(f"Starting {len(worker_args_list)} {self.thread_name_prefix} threads...")
-        
-        # Clear any previous threads
-        self.threads.clear()
-        
-        # Create and start threads
-        for worker_id, args in enumerate(worker_args_list):
-            thread = threading.Thread(
-                target=worker_func,
-                args=args,
-                name=f"{self.thread_name_prefix}-{worker_id}"
-            )
-            self.threads.append(thread)
-            thread.start()
-        
-        # Wait for all threads to complete
-        for thread in self.threads:
-            try:
-                thread.join()
-            except Exception as e:
-                logger.error(f"Error joining thread {thread.name} ({type(e).__name__}): {e}")
-        
-        logger.info(f"{self.thread_name_prefix} processing complete!")
-
-
 class ProcessingPipeline:
     """Manages a producer-consumer-writer workflow with multiple worker threads."""
 
