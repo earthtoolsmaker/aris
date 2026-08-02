@@ -12,15 +12,25 @@ The most recent version can be found at: https://github.com/EminentCodfish/pyARI
 import array
 import datetime
 import struct
-import subprocess as sp
+import threading
+import time
+from fractions import Fraction
 
+import av
 import cv2
 import numpy as np
 import pytz
 import tqdm
 from PIL import Image, ImageDraw, ImageFont
 
+from ..video.processing import ProcessingPipeline
 from . import beamLookUp
+
+# Clean-main baseline (JPEG→ffmpeg -q:v 10) landed ~5.87 Mbps on SHARE
+# workloads. Fixed qmin=qmax=vbr under-rates (~0.81×); target that bitrate
+# and scale with vbr (bitrate ∝ 1/vbr).
+_BASELINE_VBR = 10
+_BASELINE_BITRATE = 5_870_000
 
 
 class ARIS_File:
@@ -1371,9 +1381,13 @@ def VideoExport(
     fontsize=30,
     ts_pos=(0, 0),
     vbr=10,
+    num_workers=1,
+    codec="mpeg4",
 ):
-    """Output video using the ffmpeg pipeline. The current implementation
-    outputs compresses png files and outputs a mp4.
+    """Output video using in-process PyAV, overlapping FrameRead with encode.
+
+    Producer runs FrameRead; pass-through consumers (optional timestamp); ordered
+    writer encodes. Overlaps read/remap with encode like the former ffmpeg pipe.
 
     Parameters
     -----------
@@ -1385,6 +1399,8 @@ def VideoExport(
     fontsize : (Int) Size of timestamp font
     ts_pos : (Tuple) (x,y) location of the timestamp
     vbr : (Int) Variable Bitrate of output video (1-31) 1 being highest quality, 31 being lowest quality
+    num_workers : (Int) Pass-through consumer threads (default 1; raise when consumers do real work)
+    codec : (Str) PyAV encoder name (default ``mpeg4``; e.g. ``h264_videotoolbox``, ``h264_nvenc``)
 
     Returns
     -------
@@ -1392,7 +1408,6 @@ def VideoExport(
 
     Notes
     ------
-    ffmpeg must be available in the system PATH.
     Must have the '*.mp4' file extension.
     Uses the tqdm package to display a status bar.
 
@@ -1402,38 +1417,37 @@ def VideoExport(
 
     """
 
-    # Command to send via the command prompt which specifies the pipe parameters
-    # Linux compatible: use 'ffmpeg' instead of 'ffmpeg.exe'
-    command = [
-        "ffmpeg",
-        "-y",  # (optional) overwrite output file if it exists
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "-r",
-        str(fps),  # frames per second
-        "-i",
-        "-",  # The input comes from a pipe
-        "-an",  # Tells FFMPEG not to expect any audio
-        "-vcodec",
-        "mpeg4",
-        "-q:v",
-        str(vbr),  # Variable bitrate quality
-        filename,
-    ]
-
-    # Open the pipe
-    pipe = sp.Popen(command, stdin=sp.PIPE, stderr=sp.DEVNULL)
-
     if end_frame is None:
         end_frame = data.FrameCount
 
-    # Iterate through the dataframes and push to pipe
-    for i in tqdm.tqdm(range(start_frame - 1, end_frame)):
-        frame = FrameRead(data, i)
-        im = Image.fromarray(frame.remap)
+    # TEMP: surface libav / videotoolbox messages on stderr while debugging HW encode.
+    av.logging.set_level(av.logging.VERBOSE)
+
+    frame_indices = range(start_frame - 1, end_frame)
+    n_frames = len(frame_indices)
+    container = None
+    stream = None
+    progress = tqdm.tqdm(total=n_frames)
+    t_produce = 0.0
+    t_consume = 0.0
+    t_encode = 0.0
+    timing_lock = threading.Lock()
+
+    def producer():
+        nonlocal t_produce
+        for out_i, frame_i in enumerate(frame_indices):
+            t0 = time.perf_counter()
+            frame = FrameRead(data, frame_i)
+            t_produce += time.perf_counter() - t0
+            yield out_i, frame
+
+    def consumer(item):
+        nonlocal t_consume
+        t0 = time.perf_counter()
+        out_i, frame = item
+        remap = frame.remap
         if timestamp:
+            im = Image.fromarray(remap)
             ts = str(
                 datetime.datetime.fromtimestamp(
                     frame.sonartimestamp / 1000000, pytz.timezone("UTC")
@@ -1443,10 +1457,86 @@ def VideoExport(
             try:
                 font = ImageFont.truetype("DejaVuSans.ttf", fontsize)
             except OSError:
-                # Fallback to default font if DejaVuSans not available
                 font = ImageFont.load_default()
             draw.text(ts_pos, ts, font=font, fill="white")
-        im.save(pipe.stdin, "JPEG")
+            remap = np.asarray(im)
+        # H.264/HEVC (yuv420p) need even W/H; mpeg4 tolerates odd ARIS remaps.
+        if codec != "mpeg4":
+            h, w = remap.shape[:2]
+            if (h | w) & 1:
+                remap = np.pad(remap, ((0, h & 1), (0, w & 1)), mode="edge")
+        with timing_lock:
+            t_consume += time.perf_counter() - t0
+        return out_i, remap
 
-    pipe.stdin.close()
-    pipe.wait()
+    # ProcessingPipeline does not reorder; buffer like muimg VideoEncodePipeline.
+    next_index = 0
+    frame_buffer = {}
+
+    def writer(result):
+        nonlocal container, stream, next_index, t_encode
+        index, remap = result
+        frame_buffer[index] = remap
+        while next_index in frame_buffer:
+            remap = frame_buffer.pop(next_index)
+            t0 = time.perf_counter()
+            if container is None:
+                height, width = remap.shape[:2]
+                container = av.open(filename, mode="w")
+                stream = container.add_stream(
+                    codec, rate=Fraction(fps).limit_denominator()
+                )
+                stream.width = width
+                stream.height = height
+                stream.pix_fmt = "yuv420p"
+                # Match former JPEG→ffmpeg -q:v <vbr> *output size* (not raw
+                # qscale — that under-rates vs the JPEG-pipe path).
+                q = max(int(vbr), 1)
+                br = max(1, int(_BASELINE_BITRATE * _BASELINE_VBR / q))
+                stream.bit_rate = br
+                # Default tolerance (128k) is below our ~5.87 Mbps target.
+                stream.codec_context.bit_rate_tolerance = br
+
+            video_frame = av.VideoFrame.from_ndarray(remap, format="gray")
+            video_frame = video_frame.reformat(format="yuv420p")
+            for packet in stream.encode(video_frame):
+                container.mux(packet)
+            t_encode += time.perf_counter() - t0
+            progress.update(1)
+            next_index += 1
+
+    def _round_stats(obj):
+        if isinstance(obj, dict):
+            return {k: _round_stats(v) for k, v in obj.items()}
+        if isinstance(obj, float):
+            return round(obj, 2)
+        return obj
+
+    try:
+        if n_frames > 0:
+            pipeline = ProcessingPipeline(
+                producer,
+                consumer,
+                writer,
+                num_workers=num_workers,
+                total_items=n_frames,
+                task_name="VideoExport",
+            )
+            pipeline.run()
+            progress.close()
+            qstats = pipeline.get_queue_stats()
+            timing = {
+                "processing_time": qstats.pop("processing_time", 0.0),
+                "t_produce": t_produce,
+                "t_consume": t_consume,
+                "t_encode": t_encode,
+            }
+            print(f"queue_stats: {_round_stats(qstats)}", flush=True)
+            print(f"timing:      {_round_stats(timing)}", flush=True)
+        if stream is not None:
+            for packet in stream.encode():
+                container.mux(packet)
+    finally:
+        progress.close()
+        if container is not None:
+            container.close()

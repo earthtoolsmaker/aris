@@ -2,7 +2,7 @@
 CLI script to convert ARIS files into MP4 video files.
 
 This script provides a command-line interface for converting ARIS files, which
-contain sonar data, into MP4 video files using ffmpeg via pyARIS.VideoExport().
+contain sonar data, into MP4 video files via pyARIS.VideoExport() (PyAV mpeg4).
 
 Arguments:
 
@@ -17,15 +17,11 @@ uv run python ./src/aris/scripts/convert_aris_to_video.py --filepath-aris data/a
 uv run python ./src/aris/scripts/convert_aris_to_video.py --dir-aris data/aris/ --dir-save data/mp4/
 
 This script facilitates the extraction of frames from ARIS data and encodes
-them into a video format using ffmpeg, helping users visualize sonar data effectively.
-
-Requirements:
-    - ffmpeg must be installed and available in PATH
+them into a video format, helping users visualize sonar data effectively.
 """
 
 import argparse
 import logging
-import shutil
 from logging import Logger
 from pathlib import Path
 
@@ -37,7 +33,7 @@ def make_cli_parser() -> argparse.ArgumentParser:
     Make the CLI parser.
     """
     parser = argparse.ArgumentParser(
-        description="Convert ARIS sonar files to MP4 videos using ffmpeg."
+        description="Convert ARIS sonar files to MP4 videos (mpeg4 via PyAV)."
     )
     parser.add_argument(
         "--filepath-aris",
@@ -93,7 +89,7 @@ def process_aris_filepath(
     force: bool = False,
 ) -> bool:
     """
-    Process a single ARIS file by converting it to MP4 video using ffmpeg.
+    Process a single ARIS file by converting it to MP4 video.
 
     Parameters:
         filepath_aris (Path): The path to the ARIS file to be processed.
@@ -120,7 +116,7 @@ def process_aris_filepath(
 
         logger.info(f"Exporting video to: {filepath_video_save}")
 
-        # VideoExport uses ffmpeg subprocess with MPEG4 codec
+        # VideoExport uses PyAV with MPEG4 codec (same -q:v quality as before)
         pyARIS.VideoExport(
             data=aris_data,
             filename=str(filepath_video_save),
@@ -147,11 +143,6 @@ def main():
         level=args["loglevel"].upper(),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-
-    # Validate ffmpeg is available
-    if not shutil.which("ffmpeg"):
-        logger.error("ffmpeg not found in PATH. Please install ffmpeg.")
-        exit(1)
 
     if not validate_parsed_args(args):
         logging.error(f"Could not validate the parsed args: {args}")
