@@ -1265,9 +1265,6 @@ def getBeam(x, y, beamcount):
     return beamnum
 
 
-getBeamVec = np.vectorize(getBeam)
-
-
 def getBin(x, y, winstart, sampleperiod, soundspeed):
     angle = np.rad2deg(np.tan(x / y))
     hyp = y / np.cos(np.deg2rad(angle))
@@ -1275,7 +1272,16 @@ def getBin(x, y, winstart, sampleperiod, soundspeed):
     return binnum2
 
 
-getBinVec = np.vectorize(getBin)
+def _beam_breakpoints(beamcount):
+    if beamcount == 128:
+        return np.asarray(beamLookUp.breakpoints128, dtype=np.float64)
+    if beamcount == 96:
+        return np.asarray(beamLookUp.breakpoints96, dtype=np.float64)
+    if beamcount == 64:
+        return np.asarray(beamLookUp.breakpoints64, dtype=np.float64)
+    if beamcount == 48:
+        return np.asarray(beamLookUp.breakpoints48, dtype=np.float64)
+    raise ValueError(f"Unsupported BeamCount: {beamcount}")
 
 
 def LUT(ARISFile, frame):
@@ -1314,15 +1320,23 @@ def LUT(ARISFile, frame):
     # Create a matrix in real-world coordinates with the sonar located at 0,0
     xx, yy = np.meshgrid(x1, y1)
 
-    # Use the getBeamVec function to return the map_x
-    beamcount = frame.BeamCount
-    beams = getBeamVec(xx, yy, beamcount)
+    # Shared angle (same formula as getBeam / getBin)
+    angle = np.rad2deg(np.tan(xx / yy))
+    lookup_angle = -angle
 
-    # Create a map_y based on the bin locations
+    # map_x: beam index via searchsorted (same as bisect_right - 1)
+    breakpoints = _beam_breakpoints(frame.BeamCount)
+    beams = np.searchsorted(breakpoints, lookup_angle, side="right") - 1
+    valid = (lookup_angle > breakpoints[0]) & (lookup_angle <= breakpoints[-1])
+    beams = beams.astype(np.float64, copy=False)
+    beams[~valid] = 999
+
+    # map_y: range bin (truncate toward zero like int(...))
     winstart = frame.WinStart
     sampleperiod = frame.sampleperiod
     soundspeed = frame.soundspeed
-    bins = getBinVec(xx, yy, winstart, sampleperiod, soundspeed)
+    hyp = yy / np.cos(np.deg2rad(angle))
+    bins = np.trunc((2 * (hyp - winstart)) / (sampleperiod * 0.000001 * soundspeed))
 
     # Clip the map_y mask
     bins = bins.astype(np.float32)
