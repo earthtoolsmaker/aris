@@ -42,6 +42,17 @@ def _codec_accepts_gray(codec_name: str) -> bool:
     return any(f.name == "gray" for f in (c.video_formats or []))
 
 
+def _mpeg4_compatible_rate(fps: float) -> Fraction:
+    """Return a frame rate Fraction legal for mpeg4's timebase limit.
+
+    Mpeg4 caps the timebase denominator at 65535. The timebase is ``1/rate``,
+    so the rate *numerator* must be bounded: limit the reciprocal, then invert.
+    Exact rates such as 24 and 29.97 are preserved; near-15 ARIS rates (e.g.
+    ``15.000149726867676``) become ``65521/4368``.
+    """
+    return 1 / (1 / Fraction(fps)).limit_denominator(65535)
+
+
 class ARIS_File:
     "This is a class container for the ARIS file headers"
 
@@ -1526,8 +1537,9 @@ def VideoExport(
             video_frame = frame_buffer.pop(next_index)
             if container is None:
                 container = av.open(filename, mode="w")
+                # mpeg4 caps timebase den at 65535; bound the reciprocal of fps.
                 stream = container.add_stream(
-                    codec, rate=Fraction(fps).limit_denominator()
+                    codec, rate=_mpeg4_compatible_rate(fps)
                 )
                 stream.width = video_frame.width
                 stream.height = video_frame.height
