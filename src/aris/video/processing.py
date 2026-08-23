@@ -9,17 +9,13 @@ from typing import Any, Callable, Iterable
 
 logger = logging.getLogger(__name__)
 
-# Sentinel value to distinguish "not provided" from "explicitly None"
-# Used in pipeline __init__ to allow: default behavior, explicit None, or custom callable
-DEFAULT_PIPELINE_CALLABLE = object()
-
 
 class ProcessingPipeline:
     """Manages a producer-consumer-writer workflow with multiple worker threads."""
 
     def __init__(
         self,
-        producer: Callable[[], Iterable[Any]] | "ProcessingPipeline" | None,
+        producer: Callable[[], Iterable[Any]] | None,
         consumer: Callable[[Any], Any],
         writer: Callable[[Any], None] = None,
         num_workers: int = 4,
@@ -33,12 +29,8 @@ class ProcessingPipeline:
         Initializes the processing pipeline.
 
         Args:
-            producer: Either:
-                     - A no-argument callable called as producer() that returns an
-                       iterable of input items (Iterable[Any]), or
-                     - Another ProcessingPipeline instance, in which case this
-                       pipeline will consume items produced by the upstream
-                       pipeline.
+            producer: A no-argument callable called as producer() that returns an
+                      iterable of input items (Iterable[Any]).
             consumer: A one-argument callable called as consumer(item) that processes
                       a single input item.
                       - If writer is provided, consumer(item) should return the
@@ -58,18 +50,12 @@ class ProcessingPipeline:
                         cancellation.
             total_items: Total number of items to process. Passed to on_task_done.
         """
-        # Check if producer is a pipeline or callable
-        is_pipeline_producer = isinstance(producer, ProcessingPipeline)
-        if not is_pipeline_producer and producer is not None and not callable(producer):
-            raise TypeError("Producer must be a callable that returns an iterable, or a ProcessingPipeline.")
+        if producer is not None and not callable(producer):
+            raise TypeError("Producer must be a callable that returns an iterable.")
         if not callable(consumer):
             raise TypeError("Consumer must be a callable.")
         if writer and not callable(writer):
             raise TypeError("Writer must be a callable if provided.")
-        
-        # Validate that upstream pipeline has a writer
-        if is_pipeline_producer and not producer.writer:
-            raise ValueError("Upstream ProcessingPipeline must have a writer to feed this pipeline.")
 
         self.producer = producer
         self.consumer = consumer
@@ -86,40 +72,68 @@ class ProcessingPipeline:
         self.writer_queue = None
 
         self._stop_event = threading.Event()
+        self._cancelled = False
+        self._error = None
+        # Guards _completed and _error against concurrent consumer threads
+        self._lock = threading.Lock()
 
-        # Skip queue/threading allocation for synchronous mode
+        # Queues are created per-run in run(); only the sizes are fixed here.
+        self.task_queue = None
         if num_workers > 0:
             if queue_size is None:
                 queue_size = num_workers * 4
-            self.task_queue = queue.Queue(maxsize=queue_size)
+            self._queue_size = queue_size
 
             # Writer-specific setup
             if self.writer:
                 if writer_queue_size is None:
                     writer_queue_size = queue_size
-                self.writer_queue = queue.Queue(maxsize=writer_queue_size)
+                self._writer_queue_size = writer_queue_size
                 self._writer_queue_samples = []
                 self._writer_queue_empty_time = 0
 
     def cancel(self):
         """Request cancellation of the pipeline.
-        
-        Stops the producer from reading more items and signals consumer/writer
-        threads to finish processing remaining queued items and exit.
+
+        Stops the producer from enqueueing more items and signals consumer/writer
+        threads to exit when they next check the stop flag. Queued items may be
+        left unprocessed.
         """
         logger.info(f"Pipeline cancel requested{f' ({self.task_name})' if self.task_name else ''}")
+        self._cancelled = True
         self._stop_event.set()
 
     @property
     def cancelled(self) -> bool:
         """True if cancel() has been called."""
-        return self._stop_event.is_set()
+        return self._cancelled
+
+    def _fail(self, exc: BaseException) -> None:
+        with self._lock:
+            if self._error is None:
+                self._error = exc
+        self.cancel()
+
+    def _put(self, q: queue.Queue, item: Any, timeout: float = 0.1) -> None:
+        """Put item on q, retrying while full. No-op if stopped before put."""
+        while not self._stop_event.is_set():
+            try:
+                q.put(item, timeout=timeout)
+                return
+            except queue.Full:
+                continue
 
     def _notify_task_done(self):
-        """Increment completed count, call on_task_done, and cancel if requested."""
+        """Increment completed count, call on_task_done, and cancel if requested.
+
+        The lock is held across the callback so progress reports are serialized
+        and arrive in increasing order; callbacks should be quick.
+        """
         if self._on_task_done:
-            self._completed += 1
-            if self._on_task_done(self._completed, self._total_items):
+            with self._lock:
+                self._completed += 1
+                cancel_requested = self._on_task_done(self._completed, self._total_items)
+            if cancel_requested:
                 self.cancel()
 
     def _producer_thread(self):
@@ -134,18 +148,18 @@ class ProcessingPipeline:
                 if self._stop_event.is_set():
                     logger.info(f"--- Producer thread ({task_prefix}{producer.__name__}) cancelled. ---")
                     break
-                while not self._stop_event.is_set():
-                    try:
-                        self.task_queue.put(item, timeout=0.1)
-                        break
-                    except queue.Full:
-                        continue
-        finally:
-            # Send sentinels so consumers know no more items are coming
-            if not self._stop_event.is_set():
+                self._put(self.task_queue, item)
+            else:
+                # Normal completion: wake consumers. On cancel/fail they exit via stop.
                 for _ in range(self.num_workers):
-                    self.task_queue.put(None)
-            logger.info(f"--- Producer thread ({task_prefix}{producer.__name__}) finished. ---")
+                    self._put(self.task_queue, None)
+        except Exception as e:
+            logger.error(
+                f"Exception in producer thread ({type(e).__name__}): {e}",
+                exc_info=True,
+            )
+            self._fail(e)
+        logger.info(f"--- Producer thread ({task_prefix}{producer.__name__}) finished. ---")
 
     def _consumer_thread(self, thread_num: int):
         """Internal method for consumer workers."""
@@ -167,10 +181,10 @@ class ProcessingPipeline:
                     # If there's a writer, pass the result to the writer queue
                     writer_queue = self.writer_queue
                     if self.writer and result is not None and writer_queue is not None:
-                        writer_queue.put(result)
+                        self._put(writer_queue, result)
                 except Exception as e:
                     logger.error(f"Exception in consumer thread {thread_num} processing task ({type(e).__name__}): {e}", exc_info=True)
-                    # Continue processing other tasks even if one fails
+                    self._fail(e)
                 finally:
                     # Always mark task as done to prevent queue.join() from hanging
                     self.task_queue.task_done()
@@ -192,7 +206,13 @@ class ProcessingPipeline:
                     writer_queue.task_done()
                     break
 
-                writer(item_to_write)
+                try:
+                    writer(item_to_write)
+                except Exception as e:
+                    logger.error(f"Exception in writer thread ({type(e).__name__}): {e}", exc_info=True)
+                    writer_queue.task_done()
+                    self._fail(e)
+                    break
                 writer_queue.task_done()
             except queue.Empty:
                 continue
@@ -226,13 +246,7 @@ class ProcessingPipeline:
         logger.info(
             f"Running pipeline{task_desc} synchronously..."
         )
-        
-        if isinstance(self.producer, ProcessingPipeline):
-            raise TypeError(
-                "Upstream ProcessingPipeline as producer is not supported "
-                "in synchronous mode (num_workers=0)."
-            )
-        
+
         for item in self.producer() if self.producer else ():
             if self._stop_event.is_set():
                 break
@@ -250,17 +264,38 @@ class ProcessingPipeline:
         """Starts and runs the entire processing pipeline.
         
         If num_workers is 0, runs synchronously on the calling thread.
-        If producer is a ProcessingPipeline, both pipelines run in parallel with
-        the upstream pipeline enqueuing its consumer results into this pipeline's
-        task queue (while still running its own writer side effects).
         """
+        self._stop_event.clear()
+        self._cancelled = False
+        self._error = None
+        self._completed = 0
+
         # Call on_task_done immediately with 0 progress for instant feedback
         if self._on_task_done and self._total_items > 0:
             self._on_task_done(0, self._total_items)
         
         if self.num_workers == 0:
             return self._run_sync()
-        
+
+        if self.producer is None:
+            # Without a producer no items or sentinels ever reach the task
+            # queue, so consumers would block forever in run().
+            raise ValueError(
+                "A producer is required when num_workers > 0; "
+                "consumers would wait forever on an unfed task queue."
+            )
+
+        # Recreate queues so items/sentinels left over from a previous
+        # failed or cancelled run cannot leak into this one, and reset
+        # queue stats so get_queue_stats() reflects only this run.
+        self.task_queue = queue.Queue(maxsize=self._queue_size)
+        self._task_queue_samples = []
+        self._task_queue_empty_time = 0
+        if self.writer:
+            self.writer_queue = queue.Queue(maxsize=self._writer_queue_size)
+            self._writer_queue_samples = []
+            self._writer_queue_empty_time = 0
+
         import time
         start_time = time.time()
         
@@ -269,37 +304,8 @@ class ProcessingPipeline:
         worker_threads = []
         writer_thread = None
         producer_thread = None
-        upstream_pipeline = None
 
-        # Check if producer is a pipeline
-        if isinstance(self.producer, ProcessingPipeline):
-            # Producer is an upstream pipeline - wrap its writer to feed our queue
-            upstream_pipeline = self.producer
-            original_writer = upstream_pipeline.writer
-            
-            def feeding_writer(result):
-                if result is None:
-                    return
-                # Preserve upstream writer side effects (e.g., writing to disk)
-                if original_writer is not None:
-                    original_writer(result)
-                # Feed the downstream pipeline with the same produced result
-                self.task_queue.put(result)
-            
-            upstream_pipeline.writer = feeding_writer
-            
-            def _upstream_producer():
-                upstream_pipeline.run()
-                # Send sentinels after upstream finishes
-                if not self._stop_event.is_set():
-                    for _ in range(self.num_workers):
-                        self.task_queue.put(None)
-
-            # Start upstream pipeline in separate thread
-            producer_thread = threading.Thread(target=_upstream_producer)
-            producer_thread.start()
-        elif self.producer is not None:
-            # Producer is a regular callable - start producer thread
+        if self.producer is not None:
             producer_thread = threading.Thread(target=self._producer_thread)
             producer_thread.start()
 
@@ -325,16 +331,18 @@ class ProcessingPipeline:
         for thread in worker_threads:
             thread.join()
 
+        if producer_thread is not None:
+            producer_thread.join()
+
         # Writer cleanup
         if writer_thread:
             writer_queue = self.writer_queue
             if writer_queue is None:
                 raise RuntimeError("Writer thread started without a writer queue")
-            if not self._stop_event.is_set():
-                writer_queue.put(None)
+            self._put(writer_queue, None)
             writer_thread.join()
 
-        # Stop monitor
+        # Stop monitor (does not mark the run as cancelled)
         self._stop_event.set()
         monitor_thread.join()
         
@@ -342,6 +350,9 @@ class ProcessingPipeline:
 
         task_desc = f" ({self.task_name})" if self.task_name else ""
         logger.info(f"Pipeline{task_desc} processing complete!")
+
+        if self._error is not None:
+            raise self._error
 
     def get_queue_stats(self) -> dict[str, Any]:
         """Returns a dictionary with queue statistics."""

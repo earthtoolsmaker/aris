@@ -1580,6 +1580,9 @@ def VideoExport(
                 task_name="VideoExport",
             )
             pipeline.run()
+            assert not frame_buffer, (
+                f"VideoExport reorder buffer not drained: {sorted(frame_buffer)}"
+            )
             progress.close()
             qstats = pipeline.get_queue_stats()
             timing = {
