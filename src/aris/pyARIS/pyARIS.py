@@ -12,8 +12,6 @@ The most recent version can be found at: https://github.com/EminentCodfish/pyARI
 import array
 import datetime
 import struct
-import threading
-import time
 from fractions import Fraction
 
 import av
@@ -1459,31 +1457,18 @@ def VideoExport(
     if end_frame is None:
         end_frame = data.FrameCount
 
-    # TEMP: surface libav / videotoolbox messages on stderr while debugging HW encode.
-    av.logging.set_level(av.logging.VERBOSE)
-
     frame_indices = range(start_frame - 1, end_frame)
     n_frames = len(frame_indices)
     container = None
     stream = None
     progress = tqdm.tqdm(total=n_frames, disable=not show_progress)
-    t_produce = 0.0
-    t_consume = 0.0
-    t_encode = 0.0
-    t_mux = 0.0
-    timing_lock = threading.Lock()
 
     def producer():
-        nonlocal t_produce
         for out_i, frame_i in enumerate(frame_indices):
-            t0 = time.perf_counter()
             frame = FrameRead(data, frame_i, remap=False)
-            t_produce += time.perf_counter() - t0
             yield out_i, frame
 
     def consumer(item):
-        nonlocal t_consume
-        t0 = time.perf_counter()
         out_i, frame = item
         remapARIS(data, frame, None)
         remap = frame.remap
@@ -1510,8 +1495,6 @@ def VideoExport(
         # Y = limited-range gray, U/V = 128 (I420 = Y + half-height chroma).
         yuv = np.vstack([remap, np.full((h // 2, w), 128, dtype=np.uint8)])
         video_frame = av.VideoFrame.from_ndarray(yuv, format="yuv420p")
-        with timing_lock:
-            t_consume += time.perf_counter() - t0
         return out_i, video_frame
 
     # ProcessingPipeline does not reorder; buffer like muimg VideoEncodePipeline.
@@ -1519,7 +1502,7 @@ def VideoExport(
     frame_buffer = {}
 
     def writer(result):
-        nonlocal container, stream, next_index, t_encode, t_mux
+        nonlocal container, stream, next_index
         index, video_frame = result
         frame_buffer[index] = video_frame
         while next_index in frame_buffer:
@@ -1539,22 +1522,10 @@ def VideoExport(
                 ctx.global_quality = q * _FF_QP2LAMBDA
                 ctx.qmin = ctx.qmax = q
 
-            t0 = time.perf_counter()
-            packets = list(stream.encode(video_frame))
-            t_encode += time.perf_counter() - t0
-            t0 = time.perf_counter()
-            for packet in packets:
+            for packet in stream.encode(video_frame):
                 container.mux(packet)
-            t_mux += time.perf_counter() - t0
             progress.update(1)
             next_index += 1
-
-    def _round_stats(obj):
-        if isinstance(obj, dict):
-            return {k: _round_stats(v) for k, v in obj.items()}
-        if isinstance(obj, float):
-            return round(obj, 2)
-        return obj
 
     try:
         if n_frames > 0:
@@ -1571,16 +1542,6 @@ def VideoExport(
                 f"VideoExport reorder buffer not drained: {sorted(frame_buffer)}"
             )
             progress.close()
-            qstats = pipeline.get_queue_stats()
-            timing = {
-                "processing_time": qstats.pop("processing_time", 0.0),
-                "t_produce": t_produce,
-                "t_consume": t_consume,
-                "t_encode": t_encode,
-                "t_mux": t_mux,
-            }
-            print(f"queue_stats: {_round_stats(qstats)}", flush=True)
-            print(f"timing:      {_round_stats(timing)}", flush=True)
         if stream is not None:
             for packet in stream.encode():
                 container.mux(packet)
