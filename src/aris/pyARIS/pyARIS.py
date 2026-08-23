@@ -26,20 +26,15 @@ from PIL import Image, ImageDraw, ImageFont
 from ..video.processing import ProcessingPipeline
 from . import beamLookUp
 
-# Clean-main baseline (JPEG→ffmpeg -q:v 10) landed ~5.87 Mbps on SHARE
-# workloads. Fixed qmin=qmax=vbr under-rates (~0.81×); target that bitrate
-# and scale with vbr (bitrate ∝ 1/vbr).
-_BASELINE_VBR = 10
-_BASELINE_BITRATE = 5_870_000
+# FF_QP2LAMBDA: ffmpeg -q:v N sets global_quality = N * 118.
+_FF_QP2LAMBDA = 118
 
-
-def _codec_accepts_gray(codec_name: str) -> bool:
-    """True if the encoder lists ``gray`` (Y-only) among its pixel formats."""
-    try:
-        c = av.codec.Codec(codec_name, "w")
-    except Exception:
-        return False
-    return any(f.name == "gray" for f in (c.video_formats or []))
+# mpeg4 / yuv420p does not reliably signal full range. Map 0–255 → 16–235
+# so a limited-range player stretch recovers the remapped gray.
+_FULL_TO_LIMITED = np.array(
+    [16 + int(round(i * 219 / 255)) for i in range(256)],
+    dtype=np.uint8,
+)
 
 
 def _mpeg4_compatible_rate(fps: float) -> Fraction:
@@ -1441,7 +1436,7 @@ def VideoExport(
     timestamp : (Bool) Add the timestamp from the sonar to the video frames
     fontsize : (Int) Size of timestamp font
     ts_pos : (Tuple) (x,y) location of the timestamp
-    vbr : (Int) Variable Bitrate of output video (1-31) 1 being highest quality, 31 being lowest quality
+    vbr : (Int) mpeg4 quantizer (1–31); 1 is highest quality, 31 lowest. Same as ffmpeg -q:v.
     num_workers : (Int) Pass-through consumer threads (default 1; raise when consumers do real work)
     codec : (Str) PyAV encoder name (default ``mpeg4``; e.g. ``h264_videotoolbox``, ``h264_nvenc``)
     show_progress : (Bool) Show tqdm progress bar
@@ -1469,8 +1464,6 @@ def VideoExport(
 
     frame_indices = range(start_frame - 1, end_frame)
     n_frames = len(frame_indices)
-    # libx264/h264/hevc/… accept gray; mpeg4 does not (yuv420p only).
-    use_gray = _codec_accepts_gray(codec)
     container = None
     stream = None
     progress = tqdm.tqdm(total=n_frames, disable=not show_progress)
@@ -1508,19 +1501,15 @@ def VideoExport(
                 font = ImageFont.load_default()
             draw.text(ts_pos, ts, font=font, fill="white")
             remap = np.asarray(im)
-        if use_gray:
-            video_frame = av.VideoFrame.from_ndarray(
-                np.ascontiguousarray(remap), format="gray"
-            )
-        else:
-            # yuv420p (I420) needs even W/H; pad odd ARIS remaps.
+        remap = cv2.LUT(np.ascontiguousarray(remap), _FULL_TO_LIMITED)
+        # yuv420p (I420) needs even W/H; pad odd ARIS remaps.
+        h, w = remap.shape[:2]
+        if (h | w) & 1:
+            remap = np.pad(remap, ((0, h & 1), (0, w & 1)), mode="edge")
             h, w = remap.shape[:2]
-            if (h | w) & 1:
-                remap = np.pad(remap, ((0, h & 1), (0, w & 1)), mode="edge")
-                h, w = remap.shape[:2]
-            # Y = gray, U/V = 128 (I420 = Y plane + half-height chroma block).
-            yuv = np.vstack([remap, np.full((h // 2, w), 128, dtype=np.uint8)])
-            video_frame = av.VideoFrame.from_ndarray(yuv, format="yuv420p")
+        # Y = limited-range gray, U/V = 128 (I420 = Y + half-height chroma).
+        yuv = np.vstack([remap, np.full((h // 2, w), 128, dtype=np.uint8)])
+        video_frame = av.VideoFrame.from_ndarray(yuv, format="yuv420p")
         with timing_lock:
             t_consume += time.perf_counter() - t0
         return out_i, video_frame
@@ -1543,14 +1532,12 @@ def VideoExport(
                 )
                 stream.width = video_frame.width
                 stream.height = video_frame.height
-                stream.pix_fmt = "gray" if use_gray else "yuv420p"
-                # Match former JPEG→ffmpeg -q:v <vbr> *output size* (not raw
-                # qscale — that under-rates vs the JPEG-pipe path).
+                stream.pix_fmt = "yuv420p"
                 q = max(int(vbr), 1)
-                br = max(1, int(_BASELINE_BITRATE * _BASELINE_VBR / q))
-                stream.bit_rate = br
-                # Default tolerance (128k) is below our ~5.87 Mbps target.
-                stream.codec_context.bit_rate_tolerance = br
+                ctx = stream.codec_context
+                ctx.flags |= av.codec.context.Flags.qscale
+                ctx.global_quality = q * _FF_QP2LAMBDA
+                ctx.qmin = ctx.qmax = q
 
             t0 = time.perf_counter()
             packets = list(stream.encode(video_frame))
