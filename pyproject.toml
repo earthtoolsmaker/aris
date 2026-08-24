@@ -29,6 +29,7 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 dependencies = [
+    "av>=14",
     "ffmpeg-python>=0.2.0",
     "matplotlib>=3.10.3",
     "numpy>=2.3.1",
