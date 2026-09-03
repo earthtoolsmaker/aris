@@ -90,7 +90,9 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 
 @pytest.mark.slow
-def test_video_export_source_fps_writes_two_frames(aris_path: Path | None, tmp_path: Path):
+def test_video_export_source_fps_writes_two_frames(
+    aris_path: Path | None, tmp_path: Path
+):
     """Export two frames at each file's native fps; must complete and write."""
     if aris_path is None:
         pytest.skip(_aris_skip_reason())
